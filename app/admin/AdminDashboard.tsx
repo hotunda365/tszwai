@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 type SessionStatus = "active" | "pending" | "resolved";
 
@@ -12,41 +13,6 @@ type SessionItem = {
   status: SessionStatus;
   summary: string;
 };
-
-const sessions: SessionItem[] = [
-  {
-    id: "S-1042",
-    name: "匿名用戶 A",
-    mood: "焦慮",
-    updatedAt: "2 分鐘前",
-    status: "active",
-    summary: "睡眠不安，近期壓力增加，需要短期呼吸引導。",
-  },
-  {
-    id: "S-1037",
-    name: "匿名用戶 B",
-    mood: "迷惘",
-    updatedAt: "16 分鐘前",
-    status: "pending",
-    summary: "工作轉換期自我懷疑，正在進行情緒拆解。",
-  },
-  {
-    id: "S-1031",
-    name: "匿名用戶 C",
-    mood: "悲傷",
-    updatedAt: "35 分鐘前",
-    status: "resolved",
-    summary: "關係失落後進入穩定期，已完成本輪陪伴。",
-  },
-  {
-    id: "S-1028",
-    name: "匿名用戶 D",
-    mood: "平靜",
-    updatedAt: "1 小時前",
-    status: "active",
-    summary: "每日覺察紀錄正常，正在建立睡前儀式。",
-  },
-];
 
 const statusMap: Record<SessionStatus, { label: string; style: string }> = {
   active: {
@@ -81,8 +47,53 @@ function StatCard({ title, value, change }: { title: string; value: string; chan
 }
 
 export default function AdminDashboard() {
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<SessionStatus | "all">("all");
   const [query, setQuery] = useState("");
+  const [syncTime, setSyncTime] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    supabase
+      .from("sessions")
+      .select("*")
+      .order("updated_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (ignore) return;
+        if (!error && data) setSessions(data.map(rowToSession));
+        setSyncTime(new Date().toLocaleTimeString("zh-TW"));
+        setLoading(false);
+      });
+
+    const channel = supabase
+      .channel("sessions-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, () => {
+        supabase
+          .from("sessions")
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .then(({ data, error }) => {
+            if (!error && data) {
+              setSessions(data.map(rowToSession));
+              setSyncTime(new Date().toLocaleTimeString("zh-TW"));
+            }
+          });
+      })
+      .subscribe();
+
+    return () => {
+      ignore = true;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const stats = useMemo(() => ({
+    total: sessions.length,
+    active: sessions.filter((s) => s.status === "active").length,
+    pending: sessions.filter((s) => s.status === "pending").length,
+  }), [sessions]);
 
   const filteredSessions = useMemo(() => {
     return sessions.filter((item) => {
@@ -91,10 +102,9 @@ export default function AdminDashboard() {
         item.name.toLowerCase().includes(query.toLowerCase()) ||
         item.summary.toLowerCase().includes(query.toLowerCase()) ||
         item.id.toLowerCase().includes(query.toLowerCase());
-
       return matchesFilter && matchesQuery;
     });
-  }, [filter, query]);
+  }, [sessions, filter, query]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_5%_0%,#fff4dd_0%,#f3f0e6_42%,#eaf2e9_100%)] px-3 py-4 sm:px-4 sm:py-6 md:px-8">
@@ -105,17 +115,20 @@ export default function AdminDashboard() {
             <h1 className="mt-1 text-xl font-semibold text-stone-800 sm:text-2xl">後台管理中心</h1>
           </div>
           <div className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-600 sm:text-sm">
-            上次同步：剛剛
+            {syncTime ? `上次同步：${syncTime}` : "同步中…"}
           </div>
         </header>
 
         <section className="mb-4 grid grid-cols-1 gap-3 sm:mb-6 sm:gap-4 md:grid-cols-3">
-          <StatCard title="今日會話" value="128" change="+12% vs 昨日" />
-          <StatCard title="高風險提醒" value="6" change="-2 件已處理" />
-          <StatCard title="平均回覆時間" value="43 秒" change="維持穩定" />
+          <StatCard title="總會話數" value={loading ? "…" : String(stats.total)} change="即時數據" />
+          <StatCard title="進行中" value={loading ? "…" : String(stats.active)} change="正在陪伴" />
+          <StatCard title="待跟進" value={loading ? "…" : String(stats.pending)} change="需要關注" />
         </section>
 
         <section className="rounded-3xl border border-stone-200/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(91,80,61,0.08)] sm:p-5">
+          {loading && (
+            <div className="mb-3 text-center text-sm text-stone-400">載入中…</div>
+          )}
           <div className="mb-3">
             <input
               value={query}
@@ -208,3 +221,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

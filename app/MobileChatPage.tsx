@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { supabase, type MessageRow } from "@/lib/supabase";
 
 type Sender = "ai" | "user";
 
 type Message = {
-  id: number;
+  id: number | string;
   sender: Sender;
   text: string;
   time: string;
@@ -13,33 +14,31 @@ type Message = {
 
 const moodTags = ["焦慮", "平靜", "悲傷", "迷惘", "疲憊", "期待"];
 
-const initialMessages: Message[] = [
-  {
-    id: 1,
-    sender: "ai",
-    text: "你好，我在這裡陪你。你可以慢慢說，今天最想被理解的是哪一部分？",
-    time: "20:41",
-  },
-  {
-    id: 2,
-    sender: "user",
-    text: "我最近常常心裡很亂，晚上也有點難睡。",
-    time: "20:42",
-  },
-  {
-    id: 3,
-    sender: "ai",
-    text: "謝謝你願意說出來，這已經很不容易。你希望我先陪你整理情緒，還是先做一個 1 分鐘的呼吸練習？",
-    time: "20:42",
-  },
-];
+const SESSION_ID = "default";
+
+const WELCOME: Message = {
+  id: "welcome",
+  sender: "ai",
+  text: "你好，我在這裡陪你。你可以慢慢說，今天最想被理解的是哪一部分？",
+  time: "—",
+};
 
 function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+function rowToMessage(row: MessageRow): Message {
+  return {
+    id: row.id,
+    sender: row.sender,
+    text: row.text,
+    time: formatTime(new Date(row.created_at)),
+  };
+}
+
 export default function MobileChatPage() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [messages, setMessages] = useState<Message[]>([WELCOME]);
+  const [loading, setLoading] = useState(true);
   const [input, setInput] = useState("");
   const [activeMood, setActiveMood] = useState<string | null>(null);
   const [typing, setTyping] = useState(false);
@@ -51,34 +50,79 @@ export default function MobileChatPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
-  const sendMessage = () => {
-    const content = input.trim();
-    if (!content) {
-      return;
-    }
+  useEffect(() => {
+    let ignore = false;
 
-    const now = new Date();
-    const userMessage: Message = {
-      id: Date.now(),
-      sender: "user",
-      text: content,
-      time: formatTime(now),
+    supabase
+      .from("messages")
+      .select("*")
+      .eq("session_id", SESSION_ID)
+      .order("created_at", { ascending: true })
+      .then(({ data, error }) => {
+        if (ignore) return;
+        if (!error && data && data.length > 0) {
+          setMessages(data.map(rowToMessage));
+        }
+        setLoading(false);
+      });
+
+    const channel = supabase
+      .channel("messages-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `session_id=eq.${SESSION_ID}` },
+        (payload) => {
+          const row = payload.new as MessageRow;
+          setMessages((prev) =>
+            prev.some((m) => m.id === row.id) ? prev : [...prev, rowToMessage(row)]
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      ignore = true;
+      supabase.removeChannel(channel);
     };
+  }, []);
 
-    setMessages((prev) => [...prev, userMessage]);
+  const persistMessage = useCallback(async (sender: Sender, text: string) => {
+    await supabase.from("messages").insert({ session_id: SESSION_ID, sender, text });
+  }, []);
+
+  const sendMessage = async () => {
+    const content = input.trim();
+    if (!content) return;
+
     setInput("");
+    await persistMessage("user", content);
     setTyping(true);
 
-    window.setTimeout(() => {
-      const aiMessage: Message = {
-        id: Date.now() + 1,
-        sender: "ai",
-        text: "我收到了。先和你一起深呼吸 3 次，好嗎？吸氣 4 秒，停 2 秒，吐氣 6 秒。",
-        time: formatTime(new Date()),
-      };
-      setMessages((prev) => [...prev, aiMessage]);
+    try {
+      const history = messages
+        .filter((m) => m.id !== "welcome")
+        .slice(-10)
+        .map((m) => ({
+          role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
+          content: m.text,
+        }));
+
+      history.push({ role: "user", content });
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+      });
+
+      const json = await res.json();
+      const reply: string = json.reply ?? "我在這裡，你說吧。";
+      await persistMessage("ai", reply);
+    } catch {
+      await persistMessage("ai", "網路出了點問題，請稍後再試。");
+    } finally {
       setTyping(false);
-    }, 900);
+    }
   };
 
   return (
@@ -104,6 +148,9 @@ export default function MobileChatPage() {
 
       <main className="relative z-10 flex-1 overflow-y-auto px-4 pb-36 pt-5 md:px-7">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+          {loading && (
+            <div className="flex justify-center py-6 text-sm text-stone-400">載入中…</div>
+          )}
           {messages.map((message) => (
             <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
               <article
