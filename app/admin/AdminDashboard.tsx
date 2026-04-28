@@ -5,7 +5,6 @@ import { supabase } from "@/lib/supabase";
 import type { SessionRow } from "@/lib/supabase";
 import {
   DEFAULT_OPENROUTER_MODEL,
-  OPENROUTER_MODELS,
   type OpenRouterModel,
 } from "@/lib/openrouter-models";
 
@@ -77,6 +76,8 @@ export default function AdminDashboard() {
   const [model, setModel] = useState<OpenRouterModel>(DEFAULT_OPENROUTER_MODEL);
   const [savingModel, setSavingModel] = useState(false);
   const [modelMessage, setModelMessage] = useState("");
+  const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
 
   useEffect(() => {
     let ignore = false;
@@ -124,10 +125,15 @@ export default function AdminDashboard() {
         if (response.ok && typeof json.model === "string") {
           setModel(json.model as OpenRouterModel);
         }
+        if (response.ok && Array.isArray(json.models)) {
+          setAvailableModels(json.models);
+        }
+        setModelsLoading(false);
       })
       .catch(() => {
         if (!ignore) {
           setModel(DEFAULT_OPENROUTER_MODEL);
+          setModelsLoading(false);
         }
       });
 
@@ -199,20 +205,49 @@ export default function AdminDashboard() {
         <section className="mb-4 rounded-3xl border border-stone-200/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(91,80,61,0.08)] sm:mb-6 sm:p-5">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[220px] flex-1">
-              <label htmlFor="openrouter-model" className="mb-1 block text-sm font-medium text-stone-700">
+              <label htmlFor="openrouter-model" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-stone-700">
                 OpenRouter 模型
+                {modelsLoading && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-stone-300" />
+                    載入中
+                  </span>
+                )}
+                {!modelsLoading && availableModels.length > 0 && (
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      availableModels.some((m) => m.id === model)
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-red-50 text-red-600"
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        availableModels.some((m) => m.id === model)
+                          ? "bg-emerald-500"
+                          : "bg-red-500"
+                      }`}
+                    />
+                    {availableModels.some((m) => m.id === model) ? "可用" : "不可用"}
+                  </span>
+                )}
               </label>
               <select
                 id="openrouter-model"
                 value={model}
+                disabled={modelsLoading}
                 onChange={(event) => setModel(event.target.value as OpenRouterModel)}
-                className="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 outline-none ring-amber-200 transition focus:ring-2"
+                className="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 outline-none ring-amber-200 transition focus:ring-2 disabled:opacity-60"
               >
-                {OPENROUTER_MODELS.map((modelId) => (
-                  <option key={modelId} value={modelId}>
-                    {modelId}
-                  </option>
-                ))}
+                {modelsLoading ? (
+                  <option value={model}>{model}</option>
+                ) : availableModels.length > 0 ? (
+                  availableModels.map(({ id, name }) => (
+                    <option key={id} value={id}>{name}</option>
+                  ))
+                ) : (
+                  <option value={model}>{model}（無法載入清單）</option>
+                )}
               </select>
             </div>
 

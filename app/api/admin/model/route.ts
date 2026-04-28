@@ -3,18 +3,36 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   DEFAULT_OPENROUTER_MODEL,
   OPENROUTER_MODEL_COOKIE,
-  OPENROUTER_MODELS,
   isOpenRouterModel,
 } from "@/lib/openrouter-models";
 
-export async function GET() {
-  const cookieStore = await cookies();
-  const selectedModel = cookieStore.get(OPENROUTER_MODEL_COOKIE)?.value;
-  const model = selectedModel && isOpenRouterModel(selectedModel)
-    ? selectedModel
-    : DEFAULT_OPENROUTER_MODEL;
+type ModelEntry = { id: string; name: string };
 
-  return NextResponse.json({ model, models: OPENROUTER_MODELS });
+async function fetchLiveModels(apiKey: string): Promise<ModelEntry[]> {
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    if (!Array.isArray(json?.data)) return [];
+    return json.data
+      .filter((m: { id?: string }) => typeof m.id === "string" && m.id.length > 0)
+      .map((m: { id: string; name?: string }) => ({ id: m.id, name: m.name ?? m.id }));
+  } catch {
+    return [];
+  }
+}
+
+export async function GET() {
+  const apiKey = process.env.OPENROUTER_API_KEY ?? "";
+  const cookieStore = await cookies();
+  const savedModel = cookieStore.get(OPENROUTER_MODEL_COOKIE)?.value;
+  const model =
+    savedModel && isOpenRouterModel(savedModel) ? savedModel : DEFAULT_OPENROUTER_MODEL;
+  const models = await fetchLiveModels(apiKey);
+  return NextResponse.json({ model, models });
 }
 
 export async function PUT(request: NextRequest) {

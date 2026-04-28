@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import {
   DEFAULT_OPENROUTER_MODEL,
@@ -53,9 +53,10 @@ export async function POST(request: NextRequest) {
     ],
     max_tokens: 300,
     temperature: 0.75,
+    stream: true,
   };
 
-  const response = await fetch(OPENROUTER_URL, {
+  const upstream = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -66,13 +67,16 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    return NextResponse.json({ error: errorText }, { status: response.status });
+  if (!upstream.ok) {
+    const errorText = await upstream.text();
+    return new Response(JSON.stringify({ error: errorText }), { status: upstream.status });
   }
 
-  const data = await response.json();
-  const reply: string = data?.choices?.[0]?.message?.content ?? "我在這裡，你說吧。";
-
-  return NextResponse.json({ reply });
+  return new Response(upstream.body, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }
