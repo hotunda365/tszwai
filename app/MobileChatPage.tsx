@@ -405,7 +405,7 @@ export default function MobileChatPage() {
                 }
               }}
               placeholder={typing ? "正在回覆中…" : "分享你此刻的心情..."}
-              className="flex-1 resize-none bg-transparent px-1.5 py-1.5 text-base leading-snug text-stone-700 outline-none placeholder:text-stone-400 disabled:cursor-not-allowed sm:px-2 sm:py-2 sm:text-[15px]"
+              className="flex-1 resize-none bg-white px-1.5 py-1.5 text-base leading-snug text-stone-800 outline-none placeholder:text-stone-400 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-stone-500 sm:px-2 sm:py-2 sm:text-[15px]"
             />
             <button
               type="button"
