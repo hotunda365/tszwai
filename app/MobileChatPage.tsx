@@ -186,7 +186,11 @@ export default function MobileChatPage() {
         body: JSON.stringify({ messages: history }),
       });
 
-      if (!res.ok || !res.body) throw new Error("Request failed");
+      if (!res.ok || !res.body) {
+        const errorText = await res.text();
+        console.error("Chat API error:", res.status, errorText);
+        throw new Error(`Request failed: ${res.status}`);
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -212,12 +216,23 @@ export default function MobileChatPage() {
                 prev.map((m) => (m.id === tempId ? { ...m, text: accumulated } : m))
               );
             }
-          } catch { /* skip malformed chunk */ }
+          } catch (e) {
+            console.error("Failed to parse chunk:", data, e);
+          }
         }
       }
 
-      await persistMessage("ai", accumulated || "我在這裡，你說吧。");
-    } catch {
+      if (accumulated) {
+        await persistMessage("ai", accumulated);
+      } else {
+        const fallbackText = "我在這裡，但暫時無法回應，請稍後再試。";
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, text: fallbackText } : m))
+        );
+        await persistMessage("ai", fallbackText);
+      }
+    } catch (error) {
+      console.error("Send message error:", error);
       const errorText = "網路出了點問題，請稍後再試。";
       setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, text: errorText } : m)));
       await persistMessage("ai", errorText);
