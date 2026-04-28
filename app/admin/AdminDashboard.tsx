@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import type { SessionRow } from "@/lib/supabase";
 
 type SessionStatus = "active" | "pending" | "resolved";
 
@@ -44,6 +45,22 @@ function StatCard({ title, value, change }: { title: string; value: string; chan
       <p className="mt-2 text-xs text-emerald-700">{change}</p>
     </article>
   );
+}
+
+function rowToSession(row: SessionRow): SessionItem {
+  return {
+    id: row.id,
+    name: row.name,
+    mood: row.mood,
+    updatedAt: new Date(row.updated_at).toLocaleString("zh-TW", {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    status: row.status,
+    summary: row.summary,
+  };
 }
 
 export default function AdminDashboard() {
