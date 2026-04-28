@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import {
+  DEFAULT_OPENROUTER_MODEL,
+  OPENROUTER_MODEL_COOKIE,
+  isOpenRouterModel,
+} from "@/lib/openrouter-models";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -18,7 +24,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing API key" }, { status: 500 });
   }
 
-  let body: { messages?: ChatMessage[] };
+  let body: { messages?: ChatMessage[]; model?: string };
   try {
     body = await request.json();
   } catch {
@@ -26,9 +32,21 @@ export async function POST(request: NextRequest) {
   }
 
   const userMessages: ChatMessage[] = Array.isArray(body.messages) ? body.messages : [];
+  const requestedModel = typeof body.model === "string" ? body.model : undefined;
+
+  let selectedModel = DEFAULT_OPENROUTER_MODEL;
+  if (requestedModel && isOpenRouterModel(requestedModel)) {
+    selectedModel = requestedModel;
+  } else {
+    const cookieStore = await cookies();
+    const cookieModel = cookieStore.get(OPENROUTER_MODEL_COOKIE)?.value;
+    if (cookieModel && isOpenRouterModel(cookieModel)) {
+      selectedModel = cookieModel;
+    }
+  }
 
   const payload = {
-    model: "mistralai/mistral-7b-instruct",
+    model: selectedModel,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       ...userMessages,

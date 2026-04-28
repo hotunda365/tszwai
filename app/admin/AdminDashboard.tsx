@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { SessionRow } from "@/lib/supabase";
+import {
+  DEFAULT_OPENROUTER_MODEL,
+  OPENROUTER_MODELS,
+  type OpenRouterModel,
+} from "@/lib/openrouter-models";
 
 type SessionStatus = "active" | "pending" | "resolved";
 
@@ -69,6 +74,9 @@ export default function AdminDashboard() {
   const [filter, setFilter] = useState<SessionStatus | "all">("all");
   const [query, setQuery] = useState("");
   const [syncTime, setSyncTime] = useState("");
+  const [model, setModel] = useState<OpenRouterModel>(DEFAULT_OPENROUTER_MODEL);
+  const [savingModel, setSavingModel] = useState(false);
+  const [modelMessage, setModelMessage] = useState("");
 
   useEffect(() => {
     let ignore = false;
@@ -106,6 +114,52 @@ export default function AdminDashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    let ignore = false;
+
+    fetch("/api/admin/model")
+      .then(async (response) => {
+        const json = await response.json();
+        if (ignore) return;
+        if (response.ok && typeof json.model === "string") {
+          setModel(json.model as OpenRouterModel);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setModel(DEFAULT_OPENROUTER_MODEL);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const saveModel = async () => {
+    setSavingModel(true);
+    setModelMessage("");
+
+    try {
+      const response = await fetch("/api/admin/model", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+
+      if (!response.ok) {
+        setModelMessage("儲存失敗，請稍後再試");
+        return;
+      }
+
+      setModelMessage("已更新模型設定");
+    } catch {
+      setModelMessage("儲存失敗，請檢查網路連線");
+    } finally {
+      setSavingModel(false);
+    }
+  };
+
   const stats = useMemo(() => ({
     total: sessions.length,
     active: sessions.filter((s) => s.status === "active").length,
@@ -140,6 +194,39 @@ export default function AdminDashboard() {
           <StatCard title="總會話數" value={loading ? "…" : String(stats.total)} change="即時數據" />
           <StatCard title="進行中" value={loading ? "…" : String(stats.active)} change="正在陪伴" />
           <StatCard title="待跟進" value={loading ? "…" : String(stats.pending)} change="需要關注" />
+        </section>
+
+        <section className="mb-4 rounded-3xl border border-stone-200/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(91,80,61,0.08)] sm:mb-6 sm:p-5">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px] flex-1">
+              <label htmlFor="openrouter-model" className="mb-1 block text-sm font-medium text-stone-700">
+                OpenRouter 模型
+              </label>
+              <select
+                id="openrouter-model"
+                value={model}
+                onChange={(event) => setModel(event.target.value as OpenRouterModel)}
+                className="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 outline-none ring-amber-200 transition focus:ring-2"
+              >
+                {OPENROUTER_MODELS.map((modelId) => (
+                  <option key={modelId} value={modelId}>
+                    {modelId}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={saveModel}
+              disabled={savingModel}
+              className="rounded-2xl border border-stone-700 bg-stone-700 px-4 py-2.5 text-sm text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingModel ? "儲存中…" : "儲存模型"}
+            </button>
+          </div>
+
+          {modelMessage && <p className="mt-2 text-sm text-stone-600">{modelMessage}</p>}
         </section>
 
         <section className="rounded-3xl border border-stone-200/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(91,80,61,0.08)] sm:p-5">
