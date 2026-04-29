@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
       "HTTP-Referer": "https://tszwai.com",
-      "X-Title": "心靈導師",
+      "X-Title": "Mindful Guide",
     },
     body: JSON.stringify(payload),
   });

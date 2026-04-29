@@ -21,3 +21,21 @@ export type SessionRow = {
   summary: string;
   updated_at: string;
 };
+
+export type UserRow = {
+  id: string;
+  email: string;
+  password: string;
+  confirmed_at: string | null;
+  confirmation_token: string | null;
+  token_expiry: string | null;
+  created_at: string;
+};
+
+export type SessionTokenRow = {
+  id: string;
+  user_id: string;
+  token: string;
+  expires_at: string;
+  created_at: string;
+};

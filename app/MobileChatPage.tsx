@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, type MessageRow } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
 
 type Sender = "ai" | "user";
 
@@ -79,12 +81,20 @@ export default function MobileChatPage() {
   const [typing, setTyping] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [copiedId, setCopiedId] = useState<number | string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const { logout, user } = useAuth();
+  const router = useRouter();
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const canSend = useMemo(() => input.trim().length > 0 && !typing, [input, typing]);
+
+  const handleLogout = useCallback(async () => {
+    await logout();
+    router.push("/login");
+  }, [logout, router]);
 
   useEffect(() => {
     if (!showScrollBtn) {
@@ -266,16 +276,38 @@ export default function MobileChatPage() {
           <p className="text-[10px] uppercase tracking-[0.24em] text-stone-500 sm:text-xs">Mindful Session</p>
           <h1 className="mt-0.5 text-lg font-semibold text-stone-800 sm:mt-1 sm:text-xl">心靈導師</h1>
         </div>
-        <button
-          type="button"
-          aria-label="設定"
-          className="grid h-10 w-10 min-h-[44px] min-w-[44px] place-items-center rounded-full border border-stone-200 bg-white/80 text-stone-600 shadow-sm transition active:bg-stone-100 sm:hover:bg-stone-50"
-        >
-          <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
-            <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z" />
-            <path d="M19.4 15a1.4 1.4 0 0 0 .28 1.53l.05.05a1.7 1.7 0 1 1-2.4 2.4l-.05-.05a1.4 1.4 0 0 0-1.53-.28 1.4 1.4 0 0 0-.85 1.28V20a1.7 1.7 0 1 1-3.4 0v-.07a1.4 1.4 0 0 0-.9-1.29 1.4 1.4 0 0 0-1.53.29l-.05.05a1.7 1.7 0 0 1-2.4-2.4l.05-.05a1.4 1.4 0 0 0 .29-1.53 1.4 1.4 0 0 0-1.29-.9H4a1.7 1.7 0 1 1 0-3.4h.07a1.4 1.4 0 0 0 1.29-.9 1.4 1.4 0 0 0-.29-1.53l-.05-.05a1.7 1.7 0 0 1 2.4-2.4l.05.05a1.4 1.4 0 0 0 1.53.29h.02a1.4 1.4 0 0 0 .88-1.29V4a1.7 1.7 0 1 1 3.4 0v.07a1.4 1.4 0 0 0 .85 1.28 1.4 1.4 0 0 0 1.53-.28l.05-.05a1.7 1.7 0 1 1 2.4 2.4l-.05.05a1.4 1.4 0 0 0-.28 1.53v.02a1.4 1.4 0 0 0 1.28.88H20a1.7 1.7 0 1 1 0 3.4h-.07a1.4 1.4 0 0 0-1.29.85V15Z" />
-          </svg>
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="設定"
+            onClick={() => setShowSettings(!showSettings)}
+            className="grid h-10 w-10 min-h-[44px] min-w-[44px] place-items-center rounded-full border border-stone-200 bg-white/80 text-stone-600 shadow-sm transition active:bg-stone-100 sm:hover:bg-stone-50"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" stroke="currentColor" strokeWidth="1.8">
+              <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z" />
+              <path d="M19.4 15a1.4 1.4 0 0 0 .28 1.53l.05.05a1.7 1.7 0 1 1-2.4 2.4l-.05-.05a1.4 1.4 0 0 0-1.53-.28 1.4 1.4 0 0 0-.85 1.28V20a1.7 1.7 0 1 1-3.4 0v-.07a1.4 1.4 0 0 0-.9-1.29 1.4 1.4 0 0 0-1.53.29l-.05.05a1.7 1.7 0 0 1-2.4-2.4l.05-.05a1.4 1.4 0 0 0 .29-1.53 1.4 1.4 0 0 0-1.29-.9H4a1.7 1.7 0 1 1 0-3.4h.07a1.4 1.4 0 0 0 1.29-.9 1.4 1.4 0 0 0-.29-1.53l-.05-.05a1.7 1.7 0 0 1 2.4-2.4l.05.05a1.4 1.4 0 0 0 1.53.29h.02a1.4 1.4 0 0 0 .88-1.29V4a1.7 1.7 0 1 1 3.4 0v.07a1.4 1.4 0 0 0 .85 1.28 1.4 1.4 0 0 0 1.53-.28l.05-.05a1.7 1.7 0 1 1 2.4 2.4l-.05.05a1.4 1.4 0 0 0-.28 1.53v.02a1.4 1.4 0 0 0 1.28.88H20a1.7 1.7 0 1 1 0 3.4h-.07a1.4 1.4 0 0 0-1.29.85V15Z" />
+            </svg>
+          </button>
+
+          {/* Dropdown Menu */}
+          {showSettings && (
+            <div className="absolute right-0 mt-2 w-48 rounded-lg border border-stone-200 bg-white shadow-lg">
+              <div className="px-4 py-3 border-b border-stone-200">
+                <p className="text-sm text-stone-600">Logged in as</p>
+                <p className="text-sm font-medium text-stone-800">{user?.email}</p>
+              </div>
+              <button
+                onClick={() => {
+                  handleLogout();
+                  setShowSettings(false);
+                }}
+                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition"
+              >
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Messages */}
