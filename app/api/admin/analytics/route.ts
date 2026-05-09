@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     // Get user stats
     const { data: usersData, error: usersError } = await supabase
       .from("users")
-      .select("id, confirmed_at");
+      .select("id, confirmed_at, is_admin");
 
     if (usersError) throw usersError;
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-export default function ConfirmEmailPage() {
+function ConfirmEmailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");
@@ -106,5 +106,23 @@ export default function ConfirmEmailPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ConfirmEmailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-stone-50 to-stone-100">
+          <div className="w-full max-w-md p-8 bg-white rounded-lg shadow-lg text-center">
+            <h1 className="text-3xl font-bold text-stone-800 mb-4">心靈導師</h1>
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-stone-700 mb-4" />
+            <p className="text-stone-600">Loading confirmation...</p>
+          </div>
+        </div>
+      }
+    >
+      <ConfirmEmailContent />
+    </Suspense>
   );
 }
