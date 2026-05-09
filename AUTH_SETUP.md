@@ -19,6 +19,7 @@ This guide explains the new email login and confirmation system added to the app
 - Users can log in with confirmed email and password
 - Session tokens are created and stored (30-day expiry)
 - Logout functionality is available via the settings menu
+- Server-side auth routes need `SUPABASE_SERVICE_ROLE_KEY`; the anon key will be blocked by RLS
 
 ### 4. **Protected Pages**
 - The chat page is protected and requires authentication

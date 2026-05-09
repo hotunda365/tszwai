@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error || !user) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+      return NextResponse.json({ error: "Invalid Credentials" }, { status: 401 });
     }
 
     if (!user.confirmed_at) {
@@ -61,6 +61,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Login error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Internal server error";
+    return NextResponse.json(
+      {
+        error: message === "Missing Supabase server configuration: SUPABASE_SERVICE_ROLE_KEY is required"
+          ? message
+          : "Internal server error",
+      },
+      { status: 500 }
+    );
   }
 }

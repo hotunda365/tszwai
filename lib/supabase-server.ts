@@ -2,10 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 
 export function createServerSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase server configuration");
+    throw new Error("Missing Supabase server configuration: SUPABASE_SERVICE_ROLE_KEY is required");
   }
 
   return createClient(supabaseUrl, supabaseKey);
