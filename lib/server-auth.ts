@@ -34,7 +34,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   const { data: user, error: userError } = await supabase
     .from("users")
-    .select("id, email, username, is_admin")
+    .select("id, email, is_admin")
     .eq("id", session.user_id)
     .maybeSingle();
 
@@ -45,7 +45,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   return {
     id: user.id as string,
     email: user.email as string,
-    username: (user.username as string | null) ?? null,
+    username: null,
     isAdmin: Boolean(user.is_admin),
   };
 }
