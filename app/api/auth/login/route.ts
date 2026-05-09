@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     // Find user
     const { data: user, error } = await supabase
       .from("users")
-      .select("id, email, username, confirmed_at, is_admin, password")
+      .select("id, email, confirmed_at, is_admin, password")
       .eq("email", email)
       .eq("password", hashedPassword)
       .single();
@@ -59,7 +59,6 @@ export async function POST(request: NextRequest) {
       message: "Login successful",
       userId: user.id,
       email: user.email,
-      username: user.username,
       isAdmin: Boolean(user.is_admin),
     });
   } catch (error) {
