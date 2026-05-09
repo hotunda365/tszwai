@@ -51,7 +51,7 @@ cat admin-account-setup.sql
 ### Sign Up
 ```
 POST /api/auth/signup
-Body: { email: string, password: string }
+Body: { email: string, password: string, username?: string }
 Response: { message: string, userId: string }
 ```
 
@@ -59,7 +59,7 @@ Response: { message: string, userId: string }
 ```
 POST /api/auth/login
 Body: { email: string, password: string }
-Response: { message: string, userId: string, email: string }
+Response: { message: string, userId: string, email: string, username: string | null }
 ```
 
 ### Confirm Email
@@ -67,6 +67,28 @@ Response: { message: string, userId: string, email: string }
 POST /api/auth/confirm
 Body: { token: string }
 Response: { message: string, email: string }
+```
+
+### Resend Confirmation Email
+```
+POST /api/auth/confirm/resend
+Body: { email: string }
+Response: { message: string }
+```
+
+### Admin Account Management
+```
+GET /api/admin/users
+Response: { users: User[] }
+
+POST /api/admin/users
+Body: { email: string, password: string, username?: string, isAdmin?: boolean, confirmed?: boolean }
+
+PATCH /api/admin/users
+Body: { userId: string, email?: string, username?: string | null, password?: string, isAdmin?: boolean, confirmEmail?: boolean, deactivate?: boolean }
+
+DELETE /api/admin/users
+Body: { userId: string }
 ```
 
 ### Check Auth Status

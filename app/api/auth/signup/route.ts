@@ -5,7 +5,10 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 export async function POST(request: NextRequest) {
   try {
     const supabase = createServerSupabaseClient();
-    const { email, password } = await request.json();
+    const body: { email?: string; password?: string; username?: string } = await request.json();
+    const email = body.email?.trim().toLowerCase();
+    const password = body.password;
+    const username = body.username?.trim() || null;
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password required" }, { status: 400 });
@@ -34,6 +37,7 @@ export async function POST(request: NextRequest) {
       .from("users")
       .insert({
         email,
+        username,
         password: hashedPassword,
         is_admin: false,
         confirmation_token: confirmationToken,

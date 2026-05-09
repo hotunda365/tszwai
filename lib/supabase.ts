@@ -25,6 +25,7 @@ export type SessionRow = {
 export type UserRow = {
   id: string;
   email: string;
+  username: string | null;
   password: string;
   is_admin: boolean;
   confirmed_at: string | null;

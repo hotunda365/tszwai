@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) UNIQUE NOT NULL,
+  username VARCHAR(80),
   password VARCHAR(255) NOT NULL,
   is_admin BOOLEAN NOT NULL DEFAULT FALSE,
   confirmed_at TIMESTAMP WITH TIME ZONE,
@@ -22,10 +23,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 -- Create indexes
 CREATE INDEX idx_users_email ON users(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique ON users (LOWER(username)) WHERE username IS NOT NULL;
 CREATE INDEX idx_users_is_admin ON users(is_admin);
 CREATE INDEX idx_users_confirmation_token ON users(confirmation_token);
 CREATE INDEX idx_sessions_token ON sessions(token);
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
+
+-- Ensure new username column exists on older deployments
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS username VARCHAR(80);
 
 -- Enable RLS (Row Level Security)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;

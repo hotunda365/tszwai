@@ -8,6 +8,7 @@ CREATE INDEX IF NOT EXISTS idx_users_is_admin ON public.users(is_admin);
 
 INSERT INTO public.users (
   email,
+  username,
   password,
   is_admin,
   confirmed_at,
@@ -18,6 +19,7 @@ INSERT INTO public.users (
 )
 VALUES (
   'toby@hotunda.com',
+  'toby',
   '8d7bdc0c898dd277b3858f2d1e73e3020d49cf69786d6f863b55afc5731de8d7',
   TRUE,
   NOW(),
@@ -28,6 +30,7 @@ VALUES (
 )
 ON CONFLICT (email)
 DO UPDATE SET
+  username = EXCLUDED.username,
   password = EXCLUDED.password,
   is_admin = TRUE,
   confirmed_at = NOW(),

@@ -374,15 +374,23 @@ export default function AdminDashboard() {
             <p className="text-xs uppercase tracking-[0.2em] text-stone-500">tszwai.com/admin</p>
             <h1 className="mt-1 text-xl font-semibold text-stone-800 sm:text-2xl">後台管理中心</h1>
           </div>
-          <div className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-600 sm:text-sm">
-            {syncTime ? `上次同步：${syncTime}` : "同步中…"}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab("users")}
+              className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 transition hover:bg-stone-100 sm:text-sm"
+            >
+              帳戶管理
+            </button>
+            <div className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs text-stone-600 sm:text-sm">
+              {syncTime ? `上次同步：${syncTime}` : "同步中…"}
+            </div>
           </div>
         </header>
 
         {/* Tabs */}
         <div className="mb-6 flex gap-2 overflow-x-auto pb-2 rounded-3xl border border-stone-200/70 bg-white/70 p-2 backdrop-blur [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabButton isActive={activeTab === "dashboard"} label="儀表板" onClick={() => setActiveTab("dashboard")} />
-          <TabButton isActive={activeTab === "users"} label="使用者管理" onClick={() => setActiveTab("users")} />
+          <TabButton isActive={activeTab === "users"} label="帳戶管理" onClick={() => setActiveTab("users")} />
           <TabButton isActive={activeTab === "sessions"} label="會話管理" onClick={() => setActiveTab("sessions")} />
           <TabButton isActive={activeTab === "quota"} label="配額管理" onClick={() => setActiveTab("quota")} />
           <TabButton isActive={activeTab === "settings"} label="設定" onClick={() => setActiveTab("settings")} />
@@ -443,7 +451,7 @@ export default function AdminDashboard() {
         {/* Users Tab */}
         {activeTab === "users" && (
           <section className="rounded-3xl border border-stone-200/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(91,80,61,0.08)] sm:p-5">
-            <h2 className="mb-4 text-lg font-semibold text-stone-800">使用者管理</h2>
+            <h2 className="mb-4 text-lg font-semibold text-stone-800">帳戶管理</h2>
             {loading ? (
               <div className="text-center text-sm text-stone-500">載入中…</div>
             ) : users.length === 0 ? (
