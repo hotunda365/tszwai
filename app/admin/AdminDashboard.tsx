@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import type { SessionRow } from "@/lib/supabase";
 import {
   DEFAULT_OPENROUTER_MODEL,
@@ -90,18 +89,23 @@ function StatCard({ title, value, change }: { title: string; value: string; chan
 }
 
 function rowToSession(row: SessionRow): SessionItem {
+  const rawStatus = String((row as unknown as { status?: string }).status ?? "pending");
+  const status: SessionStatus = ["active", "pending", "resolved"].includes(rawStatus)
+    ? (rawStatus as SessionStatus)
+    : "pending";
+
   return {
-    id: row.id,
-    name: row.name,
-    mood: row.mood,
-    updatedAt: new Date(row.updated_at).toLocaleString("zh-TW", {
+    id: String((row as unknown as { id?: string }).id ?? ""),
+    name: String((row as unknown as { name?: string; user_id?: string }).name ?? (row as unknown as { user_id?: string }).user_id ?? "匿名使用者"),
+    mood: String((row as unknown as { mood?: string }).mood ?? "-"),
+    updatedAt: new Date(String((row as unknown as { updated_at?: string; created_at?: string }).updated_at ?? (row as unknown as { created_at?: string }).created_at ?? new Date().toISOString())).toLocaleString("zh-TW", {
       month: "numeric",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     }),
-    status: row.status,
-    summary: row.summary,
+    status,
+    summary: String((row as unknown as { summary?: string; token?: string }).summary ?? (row as unknown as { token?: string }).token ?? ""),
   };
 }
 
@@ -135,6 +139,7 @@ export default function AdminDashboard() {
   const [modelMessage, setModelMessage] = useState("");
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     loadData();
@@ -142,6 +147,7 @@ export default function AdminDashboard() {
 
   const loadData = async () => {
     setLoading(true);
+    setErrorMessage("");
     try {
       if (activeTab === "dashboard") {
         await Promise.all([loadAnalytics(), loadSessions()]);
@@ -160,61 +166,71 @@ export default function AdminDashboard() {
   const loadAnalytics = async () => {
     try {
       const res = await fetch("/api/admin/analytics");
-      if (res.ok) {
-        const data = await res.json();
-        setAnalytics(data);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setErrorMessage(body?.error ? `載入儀表板失敗：${body.error}` : "載入儀表板失敗");
+        return;
       }
+
+      const data = await res.json();
+      setAnalytics(data);
     } catch (error) {
       console.error("Failed to load analytics:", error);
+      setErrorMessage("載入儀表板失敗，請稍後再試");
     }
   };
 
   const loadSessions = async () => {
     try {
       const res = await fetch("/api/admin/sessions");
-      if (res.ok) {
-        const { sessions: data } = await res.json();
-        setSessions(data.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          mood: s.mood,
-          updatedAt: new Date(s.updated_at).toLocaleString("zh-TW", {
-            month: "numeric",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          status: s.status,
-          summary: s.summary,
-        })));
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setErrorMessage(body?.error ? `載入會話失敗：${body.error}` : "載入會話失敗");
+        return;
       }
+
+      const { sessions: data } = await res.json();
+      const normalized = Array.isArray(data) ? data.map((s: SessionRow) => rowToSession(s)) : [];
+      setSessions(normalized);
     } catch (error) {
       console.error("Failed to load sessions:", error);
+      setErrorMessage("載入會話失敗，請稍後再試");
+    } finally {
+      setSyncTime(new Date().toLocaleTimeString("zh-TW"));
     }
-    setSyncTime(new Date().toLocaleTimeString("zh-TW"));
   };
 
   const loadUsers = async () => {
     try {
       const res = await fetch("/api/admin/users");
-      if (res.ok) {
-        const { users: data } = await res.json();
-        setUsers(data);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setErrorMessage(body?.error ? `載入使用者失敗：${body.error}` : "載入使用者失敗");
+        return;
       }
+
+      const { users: data } = await res.json();
+      setUsers(data);
     } catch (error) {
       console.error("Failed to load users:", error);
+      setErrorMessage("載入使用者失敗，請稍後再試");
     }
   };
 
   const loadQuota = async () => {
     try {
       const res = await fetch("/api/admin/quota");
-      if (res.ok) {
-        const { quotas: data } = await res.json();
-        setQuotas(data);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setErrorMessage(body?.error ? `載入配額失敗：${body.error}` : "載入配額失敗");
+        return;
       }
+
+      const { quotas: data } = await res.json();
+      setQuotas(data);
     } catch (error) {
       console.error("Failed to load quotas:", error);
+      setErrorMessage("載入配額失敗，請稍後再試");
     }
   };
 
@@ -376,6 +392,13 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={loadData}
+              disabled={loading}
+              className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-100 disabled:opacity-60 sm:text-sm"
+            >
+              {loading ? "更新中…" : "立即同步"}
+            </button>
+            <button
               onClick={() => setActiveTab("users")}
               className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 transition hover:bg-stone-100 sm:text-sm"
             >
@@ -395,6 +418,12 @@ export default function AdminDashboard() {
           <TabButton isActive={activeTab === "quota"} label="配額管理" onClick={() => setActiveTab("quota")} />
           <TabButton isActive={activeTab === "settings"} label="設定" onClick={() => setActiveTab("settings")} />
         </div>
+
+        {errorMessage && (
+          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
 
         {/* Dashboard Tab */}
         {activeTab === "dashboard" && (
@@ -561,8 +590,8 @@ export default function AdminDashboard() {
                     {filteredSessions.map((session) => (
                       <tr key={session.id} className="border-t border-stone-100">
                         <td className="px-4 py-3 text-stone-700 font-mono text-xs">{session.id.slice(0, 8)}</td>
-                        <td className="px-4 py-3 text-stone-700">{session.name}</td>
-                        <td className="px-4 py-3 text-stone-600">{session.mood}</td>
+                        <td className="px-4 py-3 text-stone-700">{session.name || "匿名使用者"}</td>
+                        <td className="px-4 py-3 text-stone-600">{session.mood || "-"}</td>
                         <td className="px-4 py-3">
                           <select
                             value={session.status}

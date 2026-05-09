@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const supabase = createServerSupabaseClient();
     const { data: users, error } = await supabase
       .from("users")
-      .select("id, email, username, is_admin, confirmed_at, created_at")
+      .select("id, email, is_admin, confirmed_at, created_at")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -36,14 +36,12 @@ export async function POST(request: NextRequest) {
 
     const body: {
       email?: string;
-      username?: string;
       password?: string;
       isAdmin?: boolean;
       confirmed?: boolean;
     } = await request.json();
 
     const email = body.email?.trim().toLowerCase();
-    const username = body.username?.trim() || null;
     const password = body.password;
 
     if (!email || !password) {
@@ -61,14 +59,13 @@ export async function POST(request: NextRequest) {
       .from("users")
       .insert({
         email,
-        username,
         password: hashedPassword,
         is_admin: Boolean(body.isAdmin),
         confirmed_at: confirmed ? new Date().toISOString() : null,
         confirmation_token: confirmed ? null : confirmationToken,
         token_expiry: confirmed ? null : tokenExpiry,
       })
-      .select("id, email, username, is_admin, confirmed_at, created_at")
+      .select("id, email, is_admin, confirmed_at, created_at")
       .single();
 
     if (error) {
@@ -97,13 +94,12 @@ export async function PATCH(request: NextRequest) {
     const body: {
       userId?: string;
       email?: string;
-      username?: string | null;
       password?: string;
       isAdmin?: boolean;
       deactivate?: boolean;
       confirmEmail?: boolean;
     } = await request.json();
-    const { userId, email, username, password, isAdmin, deactivate, confirmEmail } = body;
+    const { userId, email, password, isAdmin, deactivate, confirmEmail } = body;
 
     if (!userId) {
       return NextResponse.json({ error: "userId required" }, { status: 400 });
@@ -129,13 +125,6 @@ export async function PATCH(request: NextRequest) {
     }
     if (typeof email === "string" && email.trim()) {
       updates.email = email.trim().toLowerCase();
-    }
-    if (typeof username === "string") {
-      const trimmed = username.trim();
-      updates.username = trimmed.length > 0 ? trimmed : null;
-    }
-    if (username === null) {
-      updates.username = null;
     }
     if (typeof password === "string" && password.length > 0) {
       updates.password = crypto.createHash("sha256").update(password).digest("hex");
