@@ -359,9 +359,9 @@ export default function AdminDashboard() {
     return sessions.filter((item) => {
       const matchesFilter = filter === "all" || item.status === filter;
       const matchesQuery =
-        item.name.toLowerCase().includes(query.toLowerCase()) ||
-        item.summary.toLowerCase().includes(query.toLowerCase()) ||
-        item.id.toLowerCase().includes(query.toLowerCase());
+        (item.name || "").toLowerCase().includes(query.toLowerCase()) ||
+        (item.summary || "").toLowerCase().includes(query.toLowerCase()) ||
+        (item.id || "").toLowerCase().includes(query.toLowerCase());
       return matchesFilter && matchesQuery;
     });
   }, [sessions, filter, query]);
