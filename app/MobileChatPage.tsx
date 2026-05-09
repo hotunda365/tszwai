@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, type MessageRow } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
+import { AuthPromptModal } from "@/lib/auth-prompt-modal";
 
 type Sender = "ai" | "user";
 
@@ -18,6 +19,8 @@ type Message = {
 const moodTags = ["焦慮", "平靜", "悲傷", "迷惘", "疲憊", "期待"];
 
 const SESSION_ID = "default";
+const UNAUTH_QUESTION_LIMIT = 5;
+const UNAUTH_QUESTION_COUNT_KEY = "unauth_question_count";
 
 function formatTime(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
@@ -82,7 +85,9 @@ export default function MobileChatPage() {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [copiedId, setCopiedId] = useState<number | string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const { logout, user } = useAuth();
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
+  const [unauthQuestionCount, setUnauthQuestionCount] = useState(0);
+  const { logout, user, isAuthenticated, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -95,6 +100,33 @@ export default function MobileChatPage() {
     await logout();
     router.push("/login");
   }, [logout, router]);
+
+  // Initialize unauth question count from localStorage
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      const savedCount = localStorage.getItem(UNAUTH_QUESTION_COUNT_KEY);
+      const count = savedCount ? parseInt(savedCount, 10) : 0;
+      setUnauthQuestionCount(count);
+    }
+  }, [isAuthenticated, authLoading]);
+
+  // Reset unauth question count when user logs in
+  useEffect(() => {
+    if (isAuthenticated) {
+      localStorage.removeItem(UNAUTH_QUESTION_COUNT_KEY);
+      setUnauthQuestionCount(0);
+    }
+  }, [isAuthenticated]);
+
+  const incrementQuestionCount = useCallback(() => {
+    if (!isAuthenticated) {
+      const newCount = unauthQuestionCount + 1;
+      setUnauthQuestionCount(newCount);
+      localStorage.setItem(UNAUTH_QUESTION_COUNT_KEY, newCount.toString());
+      return newCount;
+    }
+    return -1; // Authenticated users have unlimited questions
+  }, [isAuthenticated, unauthQuestionCount]);
 
   useEffect(() => {
     if (!showScrollBtn) {
@@ -167,8 +199,17 @@ export default function MobileChatPage() {
     const content = input.trim();
     if (!content || typing) return;
 
+    // Check unauth question limit
+    if (!isAuthenticated && unauthQuestionCount >= UNAUTH_QUESTION_LIMIT) {
+      setShowAuthPrompt(true);
+      return;
+    }
+
     setInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
+
+    // Increment question count for unauthenticated users
+    incrementQuestionCount();
 
     await persistMessage("user", content);
     setTyping(true);
@@ -195,6 +236,20 @@ export default function MobileChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: history }),
       });
+
+      if (res.status === 429) {
+        setShowAuthPrompt(true);
+        setUnauthQuestionCount(UNAUTH_QUESTION_LIMIT);
+        localStorage.setItem(UNAUTH_QUESTION_COUNT_KEY, UNAUTH_QUESTION_LIMIT.toString());
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId
+              ? { ...m, text: "未登入提問次數已達上限，請登入或註冊後繼續。" }
+              : m
+          )
+        );
+        return;
+      }
 
       if (!res.ok || !res.body) {
         const errorText = await res.text();
@@ -413,6 +468,16 @@ export default function MobileChatPage() {
       {/* Footer */}
       <footer className="relative z-20 shrink-0 border-t border-stone-200/70 bg-white/80 px-3 pb-[max(0.8rem,env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl sm:px-4 sm:pb-[max(1rem,env(safe-area-inset-bottom))] sm:pt-3 md:px-7">
         <div className="mx-auto w-full max-w-2xl">
+          {/* Unauth question counter */}
+          {!isAuthenticated && !authLoading && (
+            <div className="mb-2 text-center text-xs text-stone-500">
+              未登入用戶可提問 {Math.max(0, UNAUTH_QUESTION_LIMIT - unauthQuestionCount)} 個問題
+              {unauthQuestionCount >= UNAUTH_QUESTION_LIMIT && (
+                <span className="block text-amber-600 font-medium">已達上限，請登入繼續提問</span>
+              )}
+            </div>
+          )}
+
           <div className="mb-2.5 flex snap-x gap-1.5 overflow-x-auto pb-0.5 sm:mb-3 sm:gap-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {moodTags.map((tag) => (
               <button
@@ -470,6 +535,13 @@ export default function MobileChatPage() {
           <p className="mt-1.5 text-center text-[10px] text-stone-400 sm:mt-2 sm:text-[11px]">Enter 送出・Shift+Enter 換行</p>
         </div>
       </footer>
+
+      {/* Auth Prompt Modal */}
+      <AuthPromptModal 
+        isOpen={showAuthPrompt} 
+        questionCount={unauthQuestionCount}
+        onClose={() => setShowAuthPrompt(false)}
+      />
     </div>
   );
 }

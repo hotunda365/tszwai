@@ -5,6 +5,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 type User = {
   id: string;
   email: string;
+  isAdmin: boolean;
 };
 
 type AuthContextType = {
@@ -67,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const data = await res.json();
-    setUser({ id: data.userId, email: data.email });
+    setUser({ id: data.userId, email: data.email, isAdmin: Boolean(data.isAdmin) });
   };
 
   const logout = async () => {

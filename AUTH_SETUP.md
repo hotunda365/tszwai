@@ -39,6 +39,12 @@ This creates:
 - Indexes for efficient queries
 - Row Level Security policies
 
+To create or promote an admin account, run:
+
+```bash
+cat admin-account-setup.sql
+```
+
 ## API Endpoints
 
 ### Sign Up
@@ -89,6 +95,7 @@ Response: { message: string }
 ## Integration Checklist
 
 - [ ] Execute `database-schema.sql` in Supabase dashboard
+- [ ] Execute `admin-account-setup.sql` to create/promote admin user
 - [ ] Add NEXT_PUBLIC_APP_URL to `.env.local` (e.g., http://localhost:3000)
 - [ ] Integrate email service (Resend, SendGrid, etc.) to send confirmation emails
 - [ ] Update the confirmation email template with the token link

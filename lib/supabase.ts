@@ -26,6 +26,7 @@ export type UserRow = {
   id: string;
   email: string;
   password: string;
+  is_admin: boolean;
   confirmed_at: string | null;
   confirmation_token: string | null;
   token_expiry: string | null;

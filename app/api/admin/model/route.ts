@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/server-auth";
 import {
   DEFAULT_OPENROUTER_MODEL,
   OPENROUTER_MODEL_COOKIE,
@@ -26,6 +27,11 @@ async function fetchLiveModels(apiKey: string): Promise<ModelEntry[]> {
 }
 
 export async function GET() {
+  const user = await getSessionUser();
+  if (!user?.isAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const apiKey = process.env.OPENROUTER_API_KEY ?? "";
   const cookieStore = await cookies();
   const savedModel = cookieStore.get(OPENROUTER_MODEL_COOKIE)?.value;
@@ -36,6 +42,11 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  const user = await getSessionUser();
+  if (!user?.isAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   let body: { model?: string };
 
   try {

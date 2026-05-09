@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import crypto from "crypto";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createServerSupabaseClient();
     const { email, password } = await request.json();
 
     if (!email || !password) {
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       .insert({
         email,
         password: hashedPassword,
+        is_admin: false,
         confirmation_token: confirmationToken,
         token_expiry: tokenExpiry.toISOString(),
         confirmed_at: null,

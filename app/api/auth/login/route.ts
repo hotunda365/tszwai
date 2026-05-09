@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createServerSupabaseClient();
     const { email, password } = await request.json();
 
     if (!email || !password) {
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
     // Find user
     const { data: user, error } = await supabase
       .from("users")
-      .select("id, email, confirmed_at")
+      .select("id, email, confirmed_at, is_admin")
       .eq("email", email)
       .eq("password", hashedPassword)
       .single();
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
       message: "Login successful",
       userId: user.id,
       email: user.email,
+      isAdmin: Boolean(user.is_admin),
     });
   } catch (error) {
     console.error("Login error:", error);
