@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     // Find user
     const { data: user, error } = await supabase
       .from("users")
-      .select("id, email, username, confirmed_at, is_admin")
+      .select("id, email, username, confirmed_at, is_admin, password")
       .eq("email", email)
       .eq("password", hashedPassword)
       .single();
