@@ -141,6 +141,15 @@ export default function AdminDashboard() {
   const [modelsLoading, setModelsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Account management state
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserItem | null>(null);
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<UserItem | null>(null);
+  const [addUserForm, setAddUserForm] = useState({ email: "", password: "", isAdmin: false, confirmed: false });
+  const [editUserForm, setEditUserForm] = useState({ password: "", confirmEmail: false });
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState("");
+
   useEffect(() => {
     loadData();
   }, [activeTab]);
@@ -246,6 +255,130 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error("Failed to update user:", error);
+    }
+  };
+
+  const createUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    setFormLoading(true);
+
+    try {
+      if (!addUserForm.email || !addUserForm.password) {
+        setFormError("請填入信箱和密碼");
+        setFormLoading(false);
+        return;
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(addUserForm.email)) {
+        setFormError("請輸入有效的信箱格式");
+        setFormLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: addUserForm.email,
+          password: addUserForm.password,
+          isAdmin: addUserForm.isAdmin,
+          confirmed: addUserForm.confirmed,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setFormError(body?.error || "建立使用者失敗");
+        setFormLoading(false);
+        return;
+      }
+
+      await loadUsers();
+      setShowAddUserModal(false);
+      setAddUserForm({ email: "", password: "", isAdmin: false, confirmed: false });
+    } catch (error) {
+      console.error("Failed to create user:", error);
+      setFormError("建立使用者失敗，請檢查網路連線");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const updateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    setFormError("");
+    setFormLoading(true);
+
+    try {
+      const updateData: Record<string, any> = { userId: editingUser.id };
+      if (editUserForm.password) {
+        updateData.password = editUserForm.password;
+      }
+      if (editUserForm.confirmEmail) {
+        updateData.confirmEmail = true;
+      }
+
+      if (Object.keys(updateData).length === 1) {
+        setFormError("請選擇要更新的項目");
+        setFormLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setFormError(body?.error || "更新使用者失敗");
+        setFormLoading(false);
+        return;
+      }
+
+      await loadUsers();
+      setEditingUser(null);
+      setEditUserForm({ password: "", confirmEmail: false });
+    } catch (error) {
+      console.error("Failed to update user:", error);
+      setFormError("更新使用者失敗，請檢查網路連線");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const deleteUser = async () => {
+    if (!deleteConfirmUser) return;
+
+    setFormError("");
+    setFormLoading(true);
+
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: deleteConfirmUser.id }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setFormError(body?.error || "刪除使用者失敗");
+        setFormLoading(false);
+        return;
+      }
+
+      await loadUsers();
+      setDeleteConfirmUser(null);
+    } catch (error) {
+      console.error("Failed to delete user:", error);
+      setFormError("刪除使用者失敗，請檢查網路連線");
+    } finally {
+      setFormLoading(false);
     }
   };
 
@@ -479,63 +612,263 @@ export default function AdminDashboard() {
 
         {/* Users Tab */}
         {activeTab === "users" && (
-          <section className="rounded-3xl border border-stone-200/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(91,80,61,0.08)] sm:p-5">
-            <h2 className="mb-4 text-lg font-semibold text-stone-800">帳戶管理</h2>
-            {loading ? (
-              <div className="text-center text-sm text-stone-500">載入中…</div>
-            ) : users.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-stone-300 px-4 py-8 text-center text-sm text-stone-500">
-                沒有使用者
+          <>
+            <section className="rounded-3xl border border-stone-200/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(91,80,61,0.08)] sm:p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-stone-800">帳戶管理</h2>
+                <button
+                  onClick={() => {
+                    setShowAddUserModal(true);
+                    setFormError("");
+                    setAddUserForm({ email: "", password: "", isAdmin: false, confirmed: false });
+                  }}
+                  className="rounded-2xl border border-emerald-700 bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:brightness-110"
+                >
+                  + 新增使用者
+                </button>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-stone-200 bg-stone-50">
-                    <tr>
-                      <th className="px-4 py-3 font-medium text-stone-600">信箱</th>
-                      <th className="px-4 py-3 font-medium text-stone-600">狀態</th>
-                      <th className="px-4 py-3 font-medium text-stone-600">建立日期</th>
-                      <th className="px-4 py-3 font-medium text-stone-600">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id} className="border-t border-stone-100">
-                        <td className="px-4 py-3 text-stone-700">{user.email}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-medium ${
-                            user.confirmed_at ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"
-                          }`}>
-                            {user.confirmed_at ? "已驗證" : "未驗證"}
-                          </span>
-                          {user.is_admin && <span className="ml-2 inline-flex rounded-full bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 border border-purple-200">管理員</span>}
-                        </td>
-                        <td className="px-4 py-3 text-stone-600">
-                          {new Date(user.created_at).toLocaleDateString("zh-TW")}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => updateUserAdmin(user.id, !user.is_admin)}
-                              className="text-xs px-2 py-1 rounded border border-stone-300 text-stone-700 hover:bg-stone-100 transition"
-                            >
-                              {user.is_admin ? "取消管理" : "設為管理"}
-                            </button>
-                            <button
-                              onClick={() => deactivateUser(user.id)}
-                              className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50 transition"
-                            >
-                              停用
-                            </button>
-                          </div>
-                        </td>
+              {loading ? (
+                <div className="text-center text-sm text-stone-500">載入中…</div>
+              ) : users.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-stone-300 px-4 py-8 text-center text-sm text-stone-500">
+                  沒有使用者
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="border-b border-stone-200 bg-stone-50">
+                      <tr>
+                        <th className="px-4 py-3 font-medium text-stone-600">信箱</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">狀態</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">建立日期</th>
+                        <th className="px-4 py-3 font-medium text-stone-600">操作</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {users.map((user) => (
+                        <tr key={user.id} className="border-t border-stone-100">
+                          <td className="px-4 py-3 text-stone-700">{user.email}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-medium ${
+                              user.confirmed_at ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"
+                            }`}>
+                              {user.confirmed_at ? "已驗證" : "未驗證"}
+                            </span>
+                            {user.is_admin && <span className="ml-2 inline-flex rounded-full bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 border border-purple-200">管理員</span>}
+                          </td>
+                          <td className="px-4 py-3 text-stone-600">
+                            {new Date(user.created_at).toLocaleDateString("zh-TW")}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-2 flex-wrap">
+                              <button
+                                onClick={() => {
+                                  setEditingUser(user);
+                                  setEditUserForm({ password: "", confirmEmail: false });
+                                  setFormError("");
+                                }}
+                                className="text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 transition"
+                              >
+                                編輯
+                              </button>
+                              <button
+                                onClick={() => updateUserAdmin(user.id, !user.is_admin)}
+                                className="text-xs px-2 py-1 rounded border border-stone-300 text-stone-700 hover:bg-stone-100 transition"
+                              >
+                                {user.is_admin ? "取消管理" : "設為管理"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setDeleteConfirmUser(user);
+                                  setFormError("");
+                                }}
+                                className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50 transition"
+                              >
+                                刪除
+                              </button>
+                              <button
+                                onClick={() => deactivateUser(user.id)}
+                                className="text-xs px-2 py-1 rounded border border-orange-300 text-orange-700 hover:bg-orange-50 transition"
+                              >
+                                停用
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            {/* Add User Modal */}
+            {showAddUserModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div className="w-full max-w-md rounded-3xl border border-stone-200/70 bg-white p-6 shadow-2xl">
+                  <h3 className="text-lg font-semibold text-stone-800 mb-4">新增使用者</h3>
+                  {formError && (
+                    <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {formError}
+                    </div>
+                  )}
+                  <form onSubmit={createUser} className="space-y-4">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-stone-700">信箱 *</label>
+                      <input
+                        type="email"
+                        value={addUserForm.email}
+                        onChange={(e) => setAddUserForm({ ...addUserForm, email: e.target.value })}
+                        placeholder="user@example.com"
+                        className="w-full rounded-2xl border border-stone-200 px-3 py-2.5 text-sm text-stone-700 outline-none focus:ring-2 ring-amber-200"
+                        disabled={formLoading}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-stone-700">密碼 *</label>
+                      <input
+                        type="password"
+                        value={addUserForm.password}
+                        onChange={(e) => setAddUserForm({ ...addUserForm, password: e.target.value })}
+                        placeholder="••••••••"
+                        className="w-full rounded-2xl border border-stone-200 px-3 py-2.5 text-sm text-stone-700 outline-none focus:ring-2 ring-amber-200"
+                        disabled={formLoading}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={addUserForm.isAdmin}
+                          onChange={(e) => setAddUserForm({ ...addUserForm, isAdmin: e.target.checked })}
+                          disabled={formLoading}
+                          className="rounded border-stone-300"
+                        />
+                        <span className="text-sm text-stone-700">設為管理員</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={addUserForm.confirmed}
+                          onChange={(e) => setAddUserForm({ ...addUserForm, confirmed: e.target.checked })}
+                          disabled={formLoading}
+                          className="rounded border-stone-300"
+                        />
+                        <span className="text-sm text-stone-700">跳過信箱驗證</span>
+                      </label>
+                    </div>
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddUserModal(false)}
+                        disabled={formLoading}
+                        className="flex-1 rounded-2xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:opacity-60"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={formLoading}
+                        className="flex-1 rounded-2xl border border-emerald-700 bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-60"
+                      >
+                        {formLoading ? "建立中…" : "建立"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
-          </section>
+
+            {/* Edit User Modal */}
+            {editingUser && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div className="w-full max-w-md rounded-3xl border border-stone-200/70 bg-white p-6 shadow-2xl">
+                  <h3 className="text-lg font-semibold text-stone-800 mb-4">編輯使用者</h3>
+                  <p className="mb-4 text-sm text-stone-600">{editingUser.email}</p>
+                  {formError && (
+                    <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {formError}
+                    </div>
+                  )}
+                  <form onSubmit={updateUser} className="space-y-4">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-stone-700">新密碼 (選填)</label>
+                      <input
+                        type="password"
+                        value={editUserForm.password}
+                        onChange={(e) => setEditUserForm({ ...editUserForm, password: e.target.value })}
+                        placeholder="••••••••"
+                        className="w-full rounded-2xl border border-stone-200 px-3 py-2.5 text-sm text-stone-700 outline-none focus:ring-2 ring-amber-200"
+                        disabled={formLoading}
+                      />
+                    </div>
+                    <div className="rounded-2xl border border-stone-200 p-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editUserForm.confirmEmail}
+                          onChange={(e) => setEditUserForm({ ...editUserForm, confirmEmail: e.target.checked })}
+                          disabled={formLoading}
+                          className="rounded border-stone-300"
+                        />
+                        <span className="text-sm text-stone-700">確認信箱驗證</span>
+                      </label>
+                    </div>
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setEditingUser(null)}
+                        disabled={formLoading}
+                        className="flex-1 rounded-2xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:opacity-60"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={formLoading}
+                        className="flex-1 rounded-2xl border border-blue-700 bg-blue-700 px-4 py-2.5 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-60"
+                      >
+                        {formLoading ? "更新中…" : "更新"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {deleteConfirmUser && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div className="w-full max-w-md rounded-3xl border border-stone-200/70 bg-white p-6 shadow-2xl">
+                  <h3 className="text-lg font-semibold text-red-700 mb-2">確認刪除</h3>
+                  <p className="mb-4 text-sm text-stone-600">確定要刪除使用者 <span className="font-medium">{deleteConfirmUser.email}</span> 嗎？此操作無法撤銷。</p>
+                  {formError && (
+                    <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      {formError}
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmUser(null)}
+                      disabled={formLoading}
+                      className="flex-1 rounded-2xl border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-700 transition hover:bg-stone-50 disabled:opacity-60"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deleteUser}
+                      disabled={formLoading}
+                      className="flex-1 rounded-2xl border border-red-700 bg-red-700 px-4 py-2.5 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-60"
+                    >
+                      {formLoading ? "刪除中…" : "確認刪除"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Sessions Tab */}
