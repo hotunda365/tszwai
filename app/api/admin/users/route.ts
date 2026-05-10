@@ -115,8 +115,9 @@ export async function PATCH(request: NextRequest) {
       isAdmin?: boolean;
       deactivate?: boolean;
       confirmEmail?: boolean;
+      resendConfirmation?: boolean;
     } = await request.json();
-    const { userId, email, password, isAdmin, deactivate, confirmEmail } = body;
+    const { userId, email, password, isAdmin, deactivate, confirmEmail, resendConfirmation } = body;
 
     if (!userId) {
       return NextResponse.json({ error: "userId required" }, { status: 400 });
@@ -127,6 +128,51 @@ export async function PATCH(request: NextRequest) {
     }
 
     const supabase = createServerSupabaseClient();
+
+    if (resendConfirmation) {
+      const { data: targetUser, error: targetError } = await supabase
+        .from("users")
+        .select("id, email, confirmed_at")
+        .eq("id", userId)
+        .single();
+
+      if (targetError || !targetUser) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      }
+
+      if (targetUser.confirmed_at) {
+        return NextResponse.json({ error: "User is already confirmed" }, { status: 400 });
+      }
+
+      const confirmationToken = crypto.randomBytes(32).toString("hex");
+      const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      const { error: tokenUpdateError } = await supabase
+        .from("users")
+        .update({
+          confirmation_token: confirmationToken,
+          token_expiry: tokenExpiry,
+        })
+        .eq("id", userId);
+
+      if (tokenUpdateError) {
+        return NextResponse.json({ error: tokenUpdateError.message }, { status: 500 });
+      }
+
+      const emailResult = await sendConfirmationEmail({
+        to: targetUser.email,
+        token: confirmationToken,
+        mode: "resend",
+      });
+
+      if (!emailResult.ok) {
+        console.error("Failed to resend admin confirmation email:", emailResult.error);
+        console.log(`Confirmation link (fallback): ${buildConfirmationLink(confirmationToken)}`);
+        return NextResponse.json({ error: "Failed to send confirmation email" }, { status: 500 });
+      }
+
+      return NextResponse.json({ message: "Confirmation email resent successfully" });
+    }
 
     const updates: Record<string, unknown> = {};
     if (typeof isAdmin === "boolean") updates.is_admin = isAdmin;

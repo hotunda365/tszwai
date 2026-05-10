@@ -258,6 +258,28 @@ export default function AdminDashboard() {
     }
   };
 
+  const resendUserConfirmation = async (userId: string) => {
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, resendConfirmation: true }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(body?.error || "重寄驗證信失敗");
+        return;
+      }
+
+      alert(body?.message || "已重寄驗證信");
+      await loadUsers();
+    } catch (error) {
+      console.error("Failed to resend confirmation:", error);
+      alert("重寄驗證信失敗，請稍後再試");
+    }
+  };
+
   const createUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
@@ -677,6 +699,14 @@ export default function AdminDashboard() {
                               >
                                 {user.is_admin ? "取消管理" : "設為管理"}
                               </button>
+                              {!user.confirmed_at && (
+                                <button
+                                  onClick={() => resendUserConfirmation(user.id)}
+                                  className="text-xs px-2 py-1 rounded border border-teal-300 text-teal-700 hover:bg-teal-50 transition"
+                                >
+                                  重寄驗證
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
                                   setDeleteConfirmUser(user);
