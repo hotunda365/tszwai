@@ -166,9 +166,17 @@ export async function PATCH(request: NextRequest) {
       });
 
       if (!emailResult.ok) {
+        const confirmationLink = buildConfirmationLink(confirmationToken);
         console.error("Failed to resend admin confirmation email:", emailResult.error);
-        console.log(`Confirmation link (fallback): ${buildConfirmationLink(confirmationToken)}`);
-        return NextResponse.json({ error: "Failed to send confirmation email" }, { status: 500 });
+        console.log(`Confirmation link (fallback): ${confirmationLink}`);
+        return NextResponse.json(
+          {
+            error: "Failed to send confirmation email",
+            providerError: emailResult.error,
+            confirmationLink,
+          },
+          { status: 500 }
+        );
       }
 
       return NextResponse.json({ message: "Confirmation email resent successfully" });

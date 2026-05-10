@@ -268,7 +268,14 @@ export default function AdminDashboard() {
 
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(body?.error || "重寄驗證信失敗");
+        const message = body?.providerError || body?.error || "重寄驗證信失敗";
+        if (body?.confirmationLink) {
+          navigator.clipboard?.writeText(body.confirmationLink).catch(() => undefined);
+          alert(`${message}\n\n已複製備援驗證連結：\n${body.confirmationLink}`);
+          return;
+        }
+
+        alert(message);
         return;
       }
 
