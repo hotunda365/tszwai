@@ -9,13 +9,49 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isSignup, setIsSignup] = useState(false);
   const [error, setError] = useState("");
+  const [resendMessage, setResendMessage] = useState("");
+  const [resendLoading, setResendLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login, signup } = useAuth();
   const router = useRouter();
 
+  const needsConfirmation =
+    !isSignup && error.toLowerCase().includes("confirm your email");
+
+  const resendConfirmation = async () => {
+    if (!email) {
+      setResendMessage("Please enter your email first.");
+      return;
+    }
+
+    setResendMessage("");
+    setResendLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/confirm/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResendMessage(body?.error || "Failed to resend confirmation email.");
+        return;
+      }
+
+      setResendMessage(body?.message || "Confirmation email resent. Please check your inbox.");
+    } catch {
+      setResendMessage("Failed to resend confirmation email. Please try again.");
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setResendMessage("");
     setLoading(true);
 
     try {
@@ -99,12 +135,32 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {needsConfirmation && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm text-amber-800 mb-2">
+              Your account is not verified yet. Click below to resend the verification email.
+            </p>
+            <button
+              type="button"
+              onClick={resendConfirmation}
+              disabled={resendLoading}
+              className="text-sm px-3 py-1.5 rounded border border-amber-400 text-amber-800 hover:bg-amber-100 transition disabled:opacity-60"
+            >
+              {resendLoading ? "Resending..." : "Resend verification email"}
+            </button>
+            {resendMessage && (
+              <p className="mt-2 text-xs text-stone-700">{resendMessage}</p>
+            )}
+          </div>
+        )}
+
         <div className="mt-6 text-center">
           <button
             type="button"
             onClick={() => {
               setIsSignup(!isSignup);
               setError("");
+              setResendMessage("");
               setEmail("");
               setPassword("");
             }}
