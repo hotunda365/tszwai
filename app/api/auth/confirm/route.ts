@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { sendWelcomeEmail } from "@/lib/email";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,6 +39,11 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    const welcomeResult = await sendWelcomeEmail({ to: user.email });
+    if (!welcomeResult.ok) {
+      console.error("Failed to send welcome email:", welcomeResult.error);
     }
 
     return NextResponse.json({

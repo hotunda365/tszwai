@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
     const emailResult = await sendConfirmationEmail({
       to: email,
       token: confirmationToken,
+      mode: "resend",
     });
 
     if (!emailResult.ok) {
