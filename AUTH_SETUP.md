@@ -8,7 +8,7 @@ This guide explains the new email login and confirmation system added to the app
 - Users can create accounts with email and password
 - Passwords are hashed using SHA256
 - Confirmation tokens are generated and expire in 24 hours
-- Email confirmation link is logged to console (ready for email service integration)
+- Confirmation emails are sent through Resend API
 
 ### 2. **Email Confirmation**
 - Users receive a confirmation link in their email
@@ -120,10 +120,23 @@ Response: { message: string }
 - [ ] Execute `database-schema.sql` in Supabase dashboard
 - [ ] Execute `admin-account-setup.sql` to create/promote admin user
 - [ ] Add NEXT_PUBLIC_APP_URL to `.env.local` (e.g., http://localhost:3000)
-- [ ] Integrate email service (Resend, SendGrid, etc.) to send confirmation emails
+- [ ] Add `RESEND_API_KEY` to `.env.local` and production environment
+- [ ] Add `EMAIL_FROM` to `.env.local` and production environment (must be a verified sender)
 - [ ] Update the confirmation email template with the token link
 - [ ] Test signup, confirmation, and login flows
 - [ ] Update Supabase Row Level Security policies if needed
+
+### Required Environment Variables
+
+```bash
+NEXT_PUBLIC_APP_URL=https://tszwai.com
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxx
+EMAIL_FROM=Tszwai <noreply@your-domain.com>
+```
+
+Notes:
+- `EMAIL_FROM` must use a sender/domain verified in your Resend account.
+- If email delivery fails, APIs return a clear response and also log a fallback confirmation link on server logs.
 
 ## Security Notes
 
@@ -135,7 +148,7 @@ Response: { message: string }
 
 ## Next Steps
 
-1. **Email Service Integration**: Replace console.log with actual email sending (Resend, SendGrid, etc.)
+1. **Delivery Monitoring**: Add webhook/monitoring for bounce and delivery status
 2. **Password Reset**: Add forgot password functionality
 3. **OAuth Integration**: Add Google/GitHub login options
 4. **2FA**: Implement two-factor authentication

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { buildConfirmationLink, sendConfirmationEmail } from "@/lib/email";
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,8 +47,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    console.log(`Confirmation link: ${appUrl}/confirm-email?token=${confirmationToken}`);
+    const emailResult = await sendConfirmationEmail({
+      to: email,
+      token: confirmationToken,
+    });
+
+    if (!emailResult.ok) {
+      console.error("Failed to resend confirmation email:", emailResult.error);
+      console.log(`Confirmation link (fallback): ${buildConfirmationLink(confirmationToken)}`);
+      return NextResponse.json({ error: "Failed to send confirmation email" }, { status: 500 });
+    }
 
     return NextResponse.json({ message: "Confirmation email resent" });
   } catch (error) {

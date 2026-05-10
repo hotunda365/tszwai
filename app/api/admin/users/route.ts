@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getSessionUser } from "@/lib/server-auth";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { buildConfirmationLink, sendConfirmationEmail } from "@/lib/email";
 
 export async function GET(request: NextRequest) {
   try {
@@ -73,11 +74,27 @@ export async function POST(request: NextRequest) {
     }
 
     if (!confirmed) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-      console.log(`Confirmation link: ${appUrl}/confirm-email?token=${confirmationToken}`);
+      const emailResult = await sendConfirmationEmail({
+        to: email,
+        token: confirmationToken,
+      });
+
+      if (!emailResult.ok) {
+        console.error("Failed to send admin-created user confirmation email:", emailResult.error);
+        console.log(`Confirmation link (fallback): ${buildConfirmationLink(confirmationToken)}`);
+
+        return NextResponse.json(
+          {
+            message: "User created, but confirmation email failed to send",
+            user: createdUser,
+            emailSent: false,
+          },
+          { status: 201 }
+        );
+      }
     }
 
-    return NextResponse.json({ message: "User created successfully", user: createdUser }, { status: 201 });
+    return NextResponse.json({ message: "User created successfully", user: createdUser, emailSent: true }, { status: 201 });
   } catch (error) {
     console.error("Admin user create error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
