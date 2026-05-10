@@ -20,9 +20,13 @@ export default function LoginPage() {
 
     try {
       if (isSignup) {
-        await signup(email, password);
+        const result = await signup(email, password);
         setError(""); // Clear error
-        alert("Signup successful! Check your email to confirm your account.");
+        if (result.emailSent) {
+          alert("Signup successful! Check your email to confirm your account.");
+        } else {
+          alert("Account created, but confirmation email failed to send. Please use resend confirmation.");
+        }
         setIsSignup(false);
         setEmail("");
         setPassword("");

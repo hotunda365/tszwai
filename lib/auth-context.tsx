@@ -13,7 +13,7 @@ type AuthContextType = {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, username?: string) => Promise<void>;
+  signup: (email: string, password: string, username?: string) => Promise<{ emailSent: boolean; message: string }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
 };
@@ -50,10 +50,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password, username }),
     });
 
+    const body = await res.json().catch(() => ({}));
+
     if (!res.ok) {
-      const error = await res.json();
-      throw new Error(error.error || "Signup failed");
+      throw new Error(body.error || "Signup failed");
     }
+
+    return {
+      emailSent: body.emailSent !== false,
+      message: typeof body.message === "string" ? body.message : "Signup successful",
+    };
   };
 
   const login = async (email: string, password: string) => {
