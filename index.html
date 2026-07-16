@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🪷 心靈導師 · Mindful Session</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
 </head>
@@ -23,7 +23,7 @@
         <div class="lotus-ring"></div>
         <div class="lotus-ring ring-2"></div>
       </div>
-      <h1 class="site-title">心靈導師</h1>
+      <h1 class="site-title" id="assistant-name-display">心靈導師</h1>
       <p class="site-sub">一呼一吸之間，回到當下。</p>
     </header>
 
@@ -33,7 +33,7 @@
           <div class="msg-avatar">🌿</div>
           <div class="msg-bubble">
             <p>今天🌿</p>
-            <p>你好，我在這裡陪你。你可以慢慢說，<br />今天最想被理解的是哪一部分？</p>
+            <p id="assistant-greeting">你好，我在這裡陪你。你可以慢慢說，今天最想被理解的是哪一部分？</p>
           </div>
         </div>
       </div>
@@ -74,15 +74,15 @@
   <div class="modal-overlay" id="login-modal" hidden>
     <div class="modal-card">
       <div class="modal-icon">🌸</div>
-      <h2>繼續你的旅程</h2>
-      <p>登入後可無限對話，保留你的心靈記錄。</p>
+      <h2>今天先到這裡</h2>
+      <p>本次匿名體驗已完成，歡迎稍後再回來。</p>
       <div class="modal-actions">
-        <button class="btn-primary" id="btn-login">登入 / 註冊</button>
+        <button class="btn-primary" id="btn-login">知道了</button>
         <button class="btn-ghost" id="btn-close-modal">繼續作為訪客</button>
       </div>
     </div>
   </div>
 
-  <script src="app-client.js"></script>
+  <script src="app-client.js?v=2"></script>
 </body>
 </html>

@@ -2,9 +2,18 @@
    tszwai.com — App Logic
    ================================================ */
 
-const QUOTA_MAX = 5;
-let quotaLeft = QUOTA_MAX;
+const DEFAULT_SETTINGS = {
+  assistantName: '心靈導師',
+  guestQuestionLimit: 5,
+  replyStyle: 'supportive',
+  serviceEnabled: true,
+  welcomeMessage: '你好，我在這裡陪你。你可以慢慢說，今天最想被理解的是哪一部分？',
+};
+
+let appSettings = { ...DEFAULT_SETTINGS };
+let quotaLeft = DEFAULT_SETTINGS.guestQuestionLimit;
 let isWaiting = false;
+let selectedEmotion = '';
 
 const chatWindow   = document.getElementById('chat-window');
 const messageList  = document.getElementById('message-list');
@@ -14,6 +23,54 @@ const quotaCount   = document.getElementById('quota-count');
 const loginModal   = document.getElementById('login-modal');
 const btnCloseModal = document.getElementById('btn-close-modal');
 const btnLogin     = document.getElementById('btn-login');
+const assistantGreeting = document.getElementById('assistant-greeting');
+const assistantNameDisplay = document.getElementById('assistant-name-display');
+const visitorId = getVisitorId();
+
+function getVisitorId() {
+  const storageKey = 'mindful-session-visitor-id';
+
+  try {
+    let identifier = window.localStorage.getItem(storageKey);
+    if (!identifier) {
+      identifier = window.crypto?.randomUUID?.() || `guest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      window.localStorage.setItem(storageKey, identifier);
+    }
+    return identifier;
+  } catch {
+    return `guest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+function updateQuota() {
+  quotaCount.textContent = quotaLeft;
+}
+
+function applySettings(settings) {
+  if (!settings || typeof settings !== 'object') return;
+
+  const previouslyUsedQuestions = Math.max(0, appSettings.guestQuestionLimit - quotaLeft);
+  appSettings = {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+  };
+  quotaLeft = Math.max(0, appSettings.guestQuestionLimit - previouslyUsedQuestions);
+  assistantNameDisplay.textContent = appSettings.assistantName;
+  assistantGreeting.textContent = appSettings.welcomeMessage;
+  document.title = `🪷 ${appSettings.assistantName} · Mindful Session`;
+  updateQuota();
+}
+
+async function loadPublicSettings() {
+  try {
+    const response = await fetch('/api/public/config');
+    if (!response.ok) throw new Error('Unable to load settings.');
+    const payload = await response.json();
+    applySettings(payload.settings);
+  } catch {
+    updateQuota();
+  }
+}
 
 /* ── Particle canvas background ─────────────────── */
 (function initCanvas() {
@@ -100,6 +157,7 @@ document.querySelectorAll('.emotion-tag').forEach(tag => {
     document.querySelectorAll('.emotion-tag').forEach(t => t.classList.remove('active'));
     tag.classList.add('active');
     const emotion = tag.dataset.emotion;
+    selectedEmotion = emotion;
     const prompts = {
       '焦慮': '我今天感到很焦慮，心跳加速，不知所措…',
       '平靜': '我想找回一種平靜的感覺…',
@@ -120,7 +178,7 @@ function sendMessage() {
   const text = userInput.value.trim();
   if (!text || isWaiting) return;
 
-  if (quotaLeft <= 0) {
+  if (quotaLeft <= 0 || !appSettings.serviceEnabled) {
     loginModal.hidden = false;
     return;
   }
@@ -131,26 +189,54 @@ function sendMessage() {
   userInput.style.height = 'auto';
   document.querySelectorAll('.emotion-tag').forEach(t => t.classList.remove('active'));
 
-  quotaLeft--;
-  quotaCount.textContent = quotaLeft;
-
   // Show typing indicator
   const typingEl = appendTyping();
   isWaiting = true;
   sendBtn.disabled = true;
 
-  // Simulate AI response (replace with real API call)
-  setTimeout(() => {
-    typingEl.remove();
-    const reply = generateReply(text);
-    appendMsg('ai', '🌿', reply);
-    isWaiting = false;
-    sendBtn.disabled = false;
+  fetch('/api/chat', {
+    body: JSON.stringify({
+      emotion: selectedEmotion,
+      message: text,
+      visitorId,
+    }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  })
+    .then(async (response) => {
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(payload.error || '目前無法回應，請稍後再試。');
+        error.remaining = payload.remaining;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    })
+    .then((payload) => {
+      quotaLeft = Number.isInteger(payload.remaining) ? payload.remaining : Math.max(0, quotaLeft - 1);
+      updateQuota();
+      appendMsg('ai', '🌿', payload.reply);
 
-    if (quotaLeft === 0) {
-      setTimeout(() => { loginModal.hidden = false; }, 800);
-    }
-  }, 1800 + Math.random() * 800);
+      if (quotaLeft === 0) {
+        window.setTimeout(() => { loginModal.hidden = false; }, 800);
+      }
+    })
+    .catch((error) => {
+      if (Number.isInteger(error.remaining)) {
+        quotaLeft = error.remaining;
+        updateQuota();
+      }
+      appendMsg('ai', '🌿', error.message);
+      if (error.status === 429 || !appSettings.serviceEnabled) {
+        loginModal.hidden = false;
+      }
+    })
+    .finally(() => {
+      typingEl.remove();
+      isWaiting = false;
+      sendBtn.disabled = false;
+    });
 }
 
 sendBtn.addEventListener('click', sendMessage);
@@ -173,8 +259,7 @@ function appendMsg(role, avatar, text) {
 
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
-  // Render newlines
-  bubble.innerHTML = text.replace(/\n/g, '<br/>');
+  bubble.textContent = text;
 
   wrap.appendChild(ava);
   wrap.appendChild(bubble);
@@ -210,29 +295,18 @@ function scrollToBottom() {
   chatWindow.scrollTo({ top: chatWindow.scrollHeight, behavior: 'smooth' });
 }
 
-/* ── Placeholder AI replies ──────────────────────── */
-// Replace this function with a real API call to your backend
-function generateReply(userText) {
-  const responses = [
-    '謝謝你願意分享這些。\n\n聽到你說的，我感受到你心裡承載了很多。\n\n你可以再說說，是什麼讓你現在特別有這種感覺嗎？',
-    '我在這裡，慢慢來。\n\n你說的每一個字，我都認真在聽。\n\n你現在身體上有感受到什麼嗎？比如胸口、肩膀，或者呼吸的節奏？',
-    '你有這樣的感受，是完全可以被理解的。\n\n有時候，光是說出口，就已經是一種勇氣。\n\n你最希望今天離開這裡時，帶走什麼樣的感覺？',
-    '我想先陪你在這個感受裡待一會兒。\n\n不需要急著改變什麼。\n\n你有沒有一個最近讓你感到一點點溫暖的小事，可以分享給我？',
-    '你說的，讓我想更了解你。\n\n在你心裡，什麼是你最難放下的部分？',
-  ];
-  return responses[Math.floor(Math.random() * responses.length)];
-}
-
 /* ── Modal ───────────────────────────────────────── */
 btnCloseModal.addEventListener('click', () => {
   loginModal.hidden = true;
 });
 
 btnLogin.addEventListener('click', () => {
-  // Replace with real login redirect
-  window.location.href = '/login';
+  loginModal.hidden = true;
+  userInput.focus();
 });
 
 loginModal.addEventListener('click', e => {
   if (e.target === loginModal) loginModal.hidden = true;
 });
+
+loadPublicSettings();

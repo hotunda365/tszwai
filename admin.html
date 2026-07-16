@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>心靈導師 | 管理後台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="admin.css?v=1" />
+</head>
+<body class="admin-body">
+  <div class="admin-shell">
+    <aside class="admin-sidebar" aria-label="管理導覽">
+      <a class="admin-brand" href="/" aria-label="回到心靈導師前台">
+        <span class="brand-mark">🪷</span>
+        <span>
+          <strong>心靈導師</strong>
+          <small>OPERATIONS</small>
+        </span>
+      </a>
+
+      <nav class="admin-nav">
+        <a class="admin-nav-link" href="#overview">營運總覽</a>
+        <a class="admin-nav-link" href="#conversations">匿名對話</a>
+        <a class="admin-nav-link" href="#settings">導師設定</a>
+      </nav>
+
+      <a class="front-link" href="/">開啟前台</a>
+    </aside>
+
+    <main class="admin-main">
+      <section class="state-view" id="setup-view" hidden>
+        <p class="eyebrow">ADMIN SETUP</p>
+        <h1>管理後台尚未啟用</h1>
+        <p>請在服務的環境變數設定 <code>ADMIN_PASSWORD</code>，然後重新部署服務。</p>
+      </section>
+
+      <section class="login-view" id="login-view" aria-labelledby="login-heading" hidden>
+        <div class="login-panel">
+          <p class="eyebrow">PRIVATE ACCESS</p>
+          <h1 id="login-heading">管理登入</h1>
+          <form id="login-form">
+            <label for="admin-password">管理密碼</label>
+            <input id="admin-password" name="password" type="password" autocomplete="current-password" required />
+            <button class="button button-primary" type="submit">登入後台</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="dashboard-view" hidden>
+        <header class="admin-header">
+          <div>
+            <p class="eyebrow">MINDFUL SESSION</p>
+            <h1>營運總覽</h1>
+            <p class="status-copy" id="dashboard-status">正在讀取資料</p>
+          </div>
+          <div class="header-actions">
+            <button class="button button-secondary" id="refresh-button" type="button">重新整理</button>
+            <button class="button button-secondary" id="logout-button" type="button">登出</button>
+          </div>
+        </header>
+
+        <section class="metrics-grid" id="overview" aria-label="營運指標">
+          <article class="metric-card">
+            <span>匿名訪客</span>
+            <strong id="metric-visitors">0</strong>
+          </article>
+          <article class="metric-card">
+            <span>對話數量</span>
+            <strong id="metric-conversations">0</strong>
+          </article>
+          <article class="metric-card">
+            <span>訊息總數</span>
+            <strong id="metric-messages">0</strong>
+          </article>
+          <article class="metric-card metric-accent">
+            <span>今日提問</span>
+            <strong id="metric-today">0</strong>
+          </article>
+        </section>
+
+        <section class="admin-section" id="conversations" aria-labelledby="conversations-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">ANONYMOUS RECORDS</p>
+              <h2 id="conversations-heading">最近對話</h2>
+            </div>
+            <button class="button button-danger" id="clear-conversations-button" type="button">清除所有紀錄</button>
+          </div>
+          <div class="conversation-list" id="conversation-list" aria-live="polite"></div>
+        </section>
+
+        <section class="admin-section settings-section" id="settings" aria-labelledby="settings-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">ASSISTANT CONTROL</p>
+              <h2 id="settings-heading">導師設定</h2>
+            </div>
+          </div>
+
+          <form class="settings-form" id="settings-form">
+            <label class="field-label" for="assistant-name">
+              <span>導師名稱</span>
+              <input id="assistant-name" name="assistantName" maxlength="48" required />
+            </label>
+
+            <label class="field-label field-full" for="welcome-message">
+              <span>歡迎訊息</span>
+              <textarea id="welcome-message" name="welcomeMessage" rows="4" maxlength="500" required></textarea>
+            </label>
+
+            <label class="field-label" for="reply-style">
+              <span>回覆語氣</span>
+              <select id="reply-style" name="replyStyle">
+                <option value="supportive">溫柔陪伴</option>
+                <option value="grounding">回到當下</option>
+                <option value="reflective">深度反思</option>
+              </select>
+            </label>
+
+            <label class="field-label" for="guest-limit">
+              <span>訪客提問上限</span>
+              <input id="guest-limit" name="guestQuestionLimit" type="number" min="1" max="20" required />
+            </label>
+
+            <label class="service-switch" for="service-enabled">
+              <input id="service-enabled" name="serviceEnabled" type="checkbox" />
+              <span class="switch-track" aria-hidden="true"><span></span></span>
+              <span>
+                <strong>服務對外開放</strong>
+                <small>關閉後，前台將暫停接收新訊息。</small>
+              </span>
+            </label>
+
+            <div class="form-actions">
+              <button class="button button-primary" id="save-settings-button" type="submit">儲存設定</button>
+            </div>
+          </form>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script src="admin-client.js?v=1"></script>
+</body>
+</html>
