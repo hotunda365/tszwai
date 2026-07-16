@@ -189,6 +189,10 @@ function renderSystem(system, stats) {
   const enabled = Boolean(system.serviceEnabled);
   const serviceText = enabled ? '服務正常開放' : '服務已暫停';
   const stateClass = enabled ? 'online' : 'paused';
+  const storageModeLabels = {
+    'legacy-json': '舊 JSON 模式',
+    relational: '分表模式',
+  };
   const storageLabels = {
     'local-file': '容器本機檔案',
     'local-file-fallback': '本機備份（Supabase 異常）',
@@ -204,7 +208,9 @@ function renderSystem(system, stats) {
   sidebarStatusDot.classList.add(stateClass);
   sidebarServiceLabel.textContent = enabled ? 'ONLINE' : 'PAUSED';
   systemService.textContent = enabled ? '正常開放' : '已暫停';
-  systemStorage.textContent = storageLabels[system.storage] || system.storage;
+  const storageLabel = storageLabels[system.storage] || system.storage;
+  const storageModeLabel = system.storage === 'supabase' ? storageModeLabels[system.storageMode] : null;
+  systemStorage.textContent = storageModeLabel ? `${storageLabel} · ${storageModeLabel}` : storageLabel;
   systemStorage.title = system.storageError || (system.storage === 'supabase'
     ? `最後同步：${formatTime(system.storageLastSyncAt)}`
     : '重新部署可能會清除本機資料，建議使用 Supabase 或掛載 Zeabur Volume。');

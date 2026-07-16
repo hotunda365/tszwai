@@ -10,6 +10,7 @@ const dataFile = path.join(dataDirectory, 'mindful-session.json');
 const supabaseUrl = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '');
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseStateKey = process.env.SUPABASE_STATE_KEY || 'mindful_session_state_v1';
+const supabaseSettingsKey = process.env.SUPABASE_SETTINGS_KEY || 'mindful_session_settings_v1';
 const supabaseConfigured = Boolean(supabaseUrl && supabaseServiceRoleKey);
 const deepseekApiKey = process.env.DEEPSEEK_API_KEY || '';
 const deepseekBaseUrl = String(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
@@ -66,6 +67,7 @@ const replyTemplates = {
 
 let store = createDefaultStore();
 let writeQueue = Promise.resolve();
+let supabaseStorageMode = 'legacy-json';
 let storageStatus = {
   error: null,
   healthy: true,
@@ -135,8 +137,9 @@ function normaliseStore(candidate) {
           .map((message) => ({
             createdAt: typeof message.createdAt === 'string' ? message.createdAt : new Date().toISOString(),
             id: typeof message.id === 'string' ? message.id : randomId(),
+            model: typeof message.model === 'string' ? message.model.slice(0, 120) : null,
             role: message.role,
-            text: message.text.slice(0, 1200),
+            text: message.text.slice(0, 4000),
           }))
         : [],
       updatedAt: typeof conversation.updatedAt === 'string' ? conversation.updatedAt : new Date().toISOString(),
@@ -222,6 +225,140 @@ async function writeSupabaseSnapshot(snapshot) {
   });
 }
 
+function parseStoredJson(value) {
+  if (value && typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+async function loadRelationalStore() {
+  const settingsKey = encodeURIComponent(supabaseSettingsKey);
+  const stateKey = encodeURIComponent(supabaseStateKey);
+  const [conversationResponse, settingsResponse] = await Promise.all([
+    supabaseRequest(
+      `conversations?select=id,visitor_id,created_at,updated_at,messages(id,role,content,model,created_at,sequence)&order=updated_at.desc&messages.order=sequence.asc&limit=${maxConversations}`,
+      { method: 'GET' },
+    ),
+    supabaseRequest(`app_settings?select=key,value&key=in.(${settingsKey},${stateKey})`, { method: 'GET' }),
+  ]);
+  const conversationRows = await conversationResponse.json();
+  const settingRows = await settingsResponse.json();
+  const dedicatedSettings = settingRows.find((row) => row.key === supabaseSettingsKey);
+  const legacyState = settingRows.find((row) => row.key === supabaseStateKey);
+  const settings = parseStoredJson(dedicatedSettings?.value)
+    || parseStoredJson(legacyState?.value)?.settings
+    || defaultSettings;
+
+  return {
+    importComplete: Boolean(dedicatedSettings),
+    store: normaliseStore({
+      conversations: conversationRows.map((conversation) => ({
+        createdAt: conversation.created_at,
+        id: conversation.id,
+        messages: Array.isArray(conversation.messages)
+          ? conversation.messages.map((message) => ({
+            createdAt: message.created_at,
+            id: message.id,
+            model: message.model,
+            role: message.role,
+            text: message.content,
+          }))
+          : [],
+        updatedAt: conversation.updated_at,
+        visitorId: conversation.visitor_id,
+      })),
+      settings,
+      version: 2,
+    }),
+  };
+}
+
+async function upsertSupabaseRows(table, rows, conflictColumn = 'id') {
+  for (let offset = 0; offset < rows.length; offset += 500) {
+    await supabaseRequest(`${table}?on_conflict=${conflictColumn}`, {
+      body: JSON.stringify(rows.slice(offset, offset + 500)),
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      method: 'POST',
+    });
+  }
+}
+
+async function writeRelationalSettings(settings) {
+  await upsertSupabaseRows('app_settings', [{
+    key: supabaseSettingsKey,
+    updated_at: new Date().toISOString(),
+    value: JSON.stringify(settings),
+  }], 'key');
+}
+
+function createRelationalRows(conversations) {
+  const visitorRows = new Map();
+  const conversationRows = [];
+  const messageRows = [];
+
+  for (const conversation of conversations) {
+    const existingVisitor = visitorRows.get(conversation.visitorId);
+    visitorRows.set(conversation.visitorId, {
+      created_at: existingVisitor?.created_at < conversation.createdAt ? existingVisitor.created_at : conversation.createdAt,
+      id: conversation.visitorId,
+      updated_at: existingVisitor?.updated_at > conversation.updatedAt ? existingVisitor.updated_at : conversation.updatedAt,
+    });
+    conversationRows.push({
+      created_at: conversation.createdAt,
+      id: conversation.id,
+      updated_at: conversation.updatedAt,
+      visitor_id: conversation.visitorId,
+    });
+    messageRows.push(...conversation.messages.map((message) => ({
+      content: message.text,
+      conversation_id: conversation.id,
+      created_at: message.createdAt,
+      id: message.id,
+      model: message.model || null,
+      role: message.role,
+    })));
+  }
+
+  return { conversationRows, messageRows, visitorRows: [...visitorRows.values()] };
+}
+
+async function writeRelationalSnapshot(snapshotStore) {
+  const rows = createRelationalRows(snapshotStore.conversations);
+  await upsertSupabaseRows('visitors', rows.visitorRows);
+  await upsertSupabaseRows('conversations', rows.conversationRows);
+  await upsertSupabaseRows('messages', rows.messageRows);
+  await writeRelationalSettings(snapshotStore.settings);
+}
+
+async function writeRelationalConversation(conversation, messages) {
+  const rows = createRelationalRows([{ ...conversation, messages }]);
+  await upsertSupabaseRows('visitors', rows.visitorRows);
+  await upsertSupabaseRows('conversations', rows.conversationRows);
+  await upsertSupabaseRows('messages', rows.messageRows);
+}
+
+async function deleteRelationalConversation(conversationId) {
+  await supabaseRequest(`conversations?id=eq.${encodeURIComponent(conversationId)}`, {
+    headers: { Prefer: 'return=minimal' },
+    method: 'DELETE',
+  });
+}
+
+async function clearRelationalConversations() {
+  await supabaseRequest('conversations?id=not.is.null', {
+    headers: { Prefer: 'return=minimal' },
+    method: 'DELETE',
+  });
+}
+
 async function initialiseStore() {
   const localStore = await loadLocalStore();
 
@@ -232,7 +369,19 @@ async function initialiseStore() {
   }
 
   try {
-    const remoteStore = await loadSupabaseStore();
+    let remoteStore;
+
+    try {
+      const relationalResult = await loadRelationalStore();
+      const legacyStore = relationalResult.importComplete ? null : await loadSupabaseStore();
+      supabaseStorageMode = 'relational';
+      remoteStore = legacyStore || relationalResult.store;
+    } catch (error) {
+      supabaseStorageMode = 'legacy-json';
+      remoteStore = await loadSupabaseStore();
+      console.warn('Relational Supabase tables are not available; using the legacy JSON state.', error.message);
+    }
+
     store = remoteStore || localStore || createDefaultStore();
     await persistStore();
   } catch (error) {
@@ -248,13 +397,17 @@ async function initialiseStore() {
   }
 }
 
-function persistStore() {
+function queueStoreWrite(relationalWriter) {
   const snapshot = JSON.stringify(store, null, 2);
 
   writeQueue = writeQueue.catch(() => undefined).then(async () => {
     if (supabaseConfigured) {
       try {
-        await writeSupabaseSnapshot(snapshot);
+        if (supabaseStorageMode === 'relational') {
+          await (relationalWriter ? relationalWriter() : writeRelationalSnapshot(JSON.parse(snapshot)));
+        } else {
+          await writeSupabaseSnapshot(snapshot);
+        }
         storageStatus = {
           error: null,
           healthy: true,
@@ -276,6 +429,29 @@ function persistStore() {
   });
 
   return writeQueue;
+}
+
+function persistStore() {
+  return queueStoreWrite();
+}
+
+function persistConversation(conversation, messages) {
+  const conversationSnapshot = JSON.parse(JSON.stringify(conversation));
+  const messageSnapshot = JSON.parse(JSON.stringify(messages));
+  return queueStoreWrite(() => writeRelationalConversation(conversationSnapshot, messageSnapshot));
+}
+
+function persistSettings() {
+  const settingsSnapshot = JSON.parse(JSON.stringify(store.settings));
+  return queueStoreWrite(() => writeRelationalSettings(settingsSnapshot));
+}
+
+function persistConversationDeletion(conversationId) {
+  return queueStoreWrite(() => deleteRelationalConversation(conversationId));
+}
+
+function persistConversationClear() {
+  return queueStoreWrite(clearRelationalConversations);
 }
 
 function randomId() {
@@ -543,6 +719,7 @@ function getOverview() {
       storageError: storageStatus.error,
       storageHealthy: storageStatus.healthy,
       storageLastSyncAt: storageStatus.lastSyncAt,
+      storageMode: supabaseConfigured ? supabaseStorageMode : 'local',
       uptimeSeconds: Math.round(process.uptime()),
     },
   };
@@ -706,16 +883,21 @@ async function handleChat(request, response) {
   }
 
   const reply = await createAssistantReply(conversation, message, store.settings.replyStyle);
-  conversation.messages.push(
-    { createdAt: now, id: randomId(), role: 'user', text: message },
-    { createdAt: now, id: randomId(), role: 'assistant', text: reply },
-  );
+  const userMessage = { createdAt: now, id: randomId(), model: null, role: 'user', text: message };
+  const assistantMessage = {
+    createdAt: now,
+    id: randomId(),
+    model: llmStatus.provider === 'deepseek' ? deepseekModel : null,
+    role: 'assistant',
+    text: reply,
+  };
+  conversation.messages.push(userMessage, assistantMessage);
   conversation.messages = conversation.messages.slice(-maxMessagesPerConversation);
   conversation.updatedAt = now;
   store.conversations = store.conversations
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .slice(0, maxConversations);
-  await persistStore();
+  await persistConversation(conversation, [userMessage, assistantMessage]);
 
   sendJson(response, 200, {
     remaining: Math.max(0, store.settings.guestQuestionLimit - guestQuestions - 1),
@@ -772,7 +954,7 @@ async function handleAdminConversations(request, response, searchParams) {
 
   if (request.method === 'DELETE') {
     store.conversations = [];
-    await persistStore();
+    await persistConversationClear();
     sendJson(response, 200, { cleared: true });
     return;
   }
@@ -808,7 +990,7 @@ async function handleAdminConversation(request, response, conversationId) {
 
   if (request.method === 'DELETE') {
     store.conversations.splice(index, 1);
-    await persistStore();
+    await persistConversationDeletion(conversationId);
     sendJson(response, 200, { deleted: true });
     return;
   }
@@ -874,7 +1056,7 @@ async function handleAdminSettings(request, response) {
   }
 
   store.settings = result.settings;
-  await persistStore();
+  await persistSettings();
   sendJson(response, 200, { settings: store.settings });
 }
 
@@ -927,6 +1109,7 @@ async function routeRequest(request, response) {
         },
         storage: {
           healthy: storageStatus.healthy,
+          mode: supabaseConfigured ? supabaseStorageMode : 'local',
           provider: storageStatus.provider,
         },
         uptime: Math.round(process.uptime()),
