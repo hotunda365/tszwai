@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🪷 心靈導師 · Mindful Session</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <!-- Animated background canvas -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- Floating orbs -->
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <div class="app-wrapper">
+
+    <!-- Header -->
+    <header class="site-header">
+      <div class="header-badge">MINDFUL SESSION</div>
+      <div class="lotus-wrap">
+        <span class="lotus-icon" id="breathing-lotus">🪷</span>
+        <div class="lotus-ring"></div>
+        <div class="lotus-ring ring-2"></div>
+      </div>
+      <h1 class="site-title">心靈導師</h1>
+      <p class="site-sub">一呼一吸之間，回到當下。</p>
+    </header>
+
+    <!-- Chat window -->
+    <main class="chat-window" id="chat-window">
+      <div class="message-list" id="message-list">
+        <!-- Greeting bubble -->
+        <div class="msg ai fade-in">
+          <div class="msg-avatar">🌿</div>
+          <div class="msg-bubble">
+            <p>今天🌿</p>
+            <p>你好，我在這裡陪你。你可以慢慢說，<br/>今天最想被理解的是哪一部分？</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer: input area -->
+    <footer class="input-area">
+      <!-- Emotion tags -->
+      <div class="emotion-bar">
+        <button class="emotion-tag" data-emotion="焦慮">焦慮</button>
+        <button class="emotion-tag" data-emotion="平靜">平靜</button>
+        <button class="emotion-tag" data-emotion="悲傷">悲傷</button>
+        <button class="emotion-tag" data-emotion="迷惘">迷惘</button>
+        <button class="emotion-tag" data-emotion="疲憊">疲憊</button>
+        <button class="emotion-tag" data-emotion="期待">期待</button>
+      </div>
+
+      <!-- Input row -->
+      <div class="input-row">
+        <textarea
+          id="user-input"
+          class="chat-input"
+          placeholder="說說你的心情…"
+          rows="1"
+        ></textarea>
+        <button class="send-btn" id="send-btn" title="送出">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Hint + quota -->
+      <div class="input-hint">
+        <span class="quota-label" id="quota-label">未登入用戶可提問 <strong id="quota-count">5</strong> 個問題</span>
+        <span class="hint-key">Enter 送出 · Shift+Enter 換行</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Login nudge modal -->
+  <div class="modal-overlay" id="login-modal" hidden>
+    <div class="modal-card">
+      <div class="modal-icon">🌸</div>
+      <h2>繼續你的旅程</h2>
+      <p>登入後可無限對話，保留你的心靈記錄。</p>
+      <div class="modal-actions">
+        <button class="btn-primary" id="btn-login">登入 / 註冊</button>
+        <button class="btn-ghost" id="btn-close-modal">繼續作為訪客</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
