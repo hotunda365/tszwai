@@ -834,7 +834,14 @@ async function routeRequest(request, response) {
 
   try {
     if (pathname === '/health' && request.method === 'GET') {
-      sendJson(response, 200, { status: 'ok', uptime: Math.round(process.uptime()) });
+      sendJson(response, 200, {
+        status: storageStatus.healthy ? 'ok' : 'degraded',
+        storage: {
+          healthy: storageStatus.healthy,
+          provider: storageStatus.provider,
+        },
+        uptime: Math.round(process.uptime()),
+      });
       return;
     }
     if (pathname === '/api/public/config' && request.method === 'GET') return await handlePublicConfig(response);
