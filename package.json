@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Enhanced mindful AI chat session",
   "scripts": {
-    "start": "python -m http.server 3000"
+    "build": "echo 'Static files only, no build needed'",
+    "start": "node server.js"
   }
 }
