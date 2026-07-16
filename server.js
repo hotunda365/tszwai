@@ -7,7 +7,11 @@ const port = Number(process.env.PORT) || 3000;
 const publicDirectory = __dirname;
 const dataDirectory = process.env.DATA_DIR || path.join(publicDirectory, '.data');
 const dataFile = path.join(dataDirectory, 'mindful-session.json');
-const adminPassword = process.env.ADMIN_PASSWORD || '';
+const supabaseUrl = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '');
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseStateKey = process.env.SUPABASE_STATE_KEY || 'mindful_session_state_v1';
+const supabaseConfigured = Boolean(supabaseUrl && supabaseServiceRoleKey);
+const adminPassword = process.env.ADMIN_PASSWORD || process.env.PASSWORD || '';
 const adminPasswordHash = adminPassword
   ? createHash('sha256').update(adminPassword, 'utf8').digest()
   : null;
@@ -58,6 +62,12 @@ const replyTemplates = {
 
 let store = createDefaultStore();
 let writeQueue = Promise.resolve();
+let storageStatus = {
+  error: null,
+  healthy: true,
+  lastSyncAt: null,
+  provider: supabaseConfigured ? 'supabase' : process.env.DATA_DIR ? 'persistent-volume' : 'local-file',
+};
 const sessions = new Map();
 const loginAttempts = new Map();
 
@@ -128,27 +138,131 @@ function normaliseStore(candidate) {
   return normalised;
 }
 
-async function initialiseStore() {
+async function loadLocalStore() {
   await mkdir(dataDirectory, { recursive: true });
 
   try {
     const source = await readFile(dataFile, 'utf8');
-    store = normaliseStore(JSON.parse(source));
+    return normaliseStore(JSON.parse(source));
   } catch (error) {
     if (error.code !== 'ENOENT') {
-      console.error('Unable to load application data. Starting with a clean store.', error);
+      console.error('Unable to load local application data.', error);
     }
+    return null;
+  }
+}
+
+async function writeLocalSnapshot(snapshot) {
+  const temporaryFile = `${dataFile}.${randomBytes(6).toString('hex')}.tmp`;
+  await mkdir(dataDirectory, { recursive: true });
+  await writeFile(temporaryFile, snapshot, 'utf8');
+  await rename(temporaryFile, dataFile);
+}
+
+async function supabaseRequest(resource, options = {}) {
+  if (!supabaseConfigured) {
+    throw new Error('Supabase is not configured.');
+  }
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/${resource}`, {
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${supabaseServiceRoleKey}`,
+      apikey: supabaseServiceRoleKey,
+      ...options.headers,
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    const error = new Error(`Supabase request failed with status ${response.status}.`);
+    error.status = response.status;
+    error.detail = detail.slice(0, 300);
+    throw error;
+  }
+
+  return response;
+}
+
+async function loadSupabaseStore() {
+  const key = encodeURIComponent(supabaseStateKey);
+  const response = await supabaseRequest(`app_settings?select=value&key=eq.${key}&limit=1`, {
+    method: 'GET',
+  });
+  const rows = await response.json();
+
+  if (!rows.length || typeof rows[0].value !== 'string') return null;
+  return normaliseStore(JSON.parse(rows[0].value));
+}
+
+async function writeSupabaseSnapshot(snapshot) {
+  await supabaseRequest('app_settings?on_conflict=key', {
+    body: JSON.stringify({
+      key: supabaseStateKey,
+      updated_at: new Date().toISOString(),
+      value: snapshot,
+    }),
+    headers: {
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    method: 'POST',
+  });
+}
+
+async function initialiseStore() {
+  const localStore = await loadLocalStore();
+
+  if (!supabaseConfigured) {
+    store = localStore || createDefaultStore();
     await persistStore();
+    return;
+  }
+
+  try {
+    const remoteStore = await loadSupabaseStore();
+    store = remoteStore || localStore || createDefaultStore();
+    await persistStore();
+  } catch (error) {
+    storageStatus = {
+      error: error.message,
+      healthy: false,
+      lastSyncAt: null,
+      provider: process.env.DATA_DIR ? 'persistent-volume-fallback' : 'local-file-fallback',
+    };
+    store = localStore || createDefaultStore();
+    await writeLocalSnapshot(JSON.stringify(store, null, 2));
+    console.error('Supabase persistence is unavailable; using the local backup.', error.message);
   }
 }
 
 function persistStore() {
   const snapshot = JSON.stringify(store, null, 2);
-  const temporaryFile = `${dataFile}.${randomBytes(6).toString('hex')}.tmp`;
 
-  writeQueue = writeQueue.then(async () => {
-    await writeFile(temporaryFile, snapshot, 'utf8');
-    await rename(temporaryFile, dataFile);
+  writeQueue = writeQueue.catch(() => undefined).then(async () => {
+    if (supabaseConfigured) {
+      try {
+        await writeSupabaseSnapshot(snapshot);
+        storageStatus = {
+          error: null,
+          healthy: true,
+          lastSyncAt: new Date().toISOString(),
+          provider: 'supabase',
+        };
+      } catch (error) {
+        storageStatus = {
+          error: error.message,
+          healthy: false,
+          lastSyncAt: storageStatus.lastSyncAt,
+          provider: process.env.DATA_DIR ? 'persistent-volume-fallback' : 'local-file-fallback',
+        };
+        console.error('Supabase write failed; saved the state to the local backup.', error.message);
+      }
+    }
+
+    await writeLocalSnapshot(snapshot);
   });
 
   return writeQueue;
@@ -415,7 +529,10 @@ function getOverview() {
     system: {
       adminConfigured: Boolean(adminPasswordHash),
       serviceEnabled: store.settings.serviceEnabled,
-      storage: process.env.DATA_DIR ? 'persistent-volume' : 'local-file',
+      storage: storageStatus.provider,
+      storageError: storageStatus.error,
+      storageHealthy: storageStatus.healthy,
+      storageLastSyncAt: storageStatus.lastSyncAt,
       uptimeSeconds: Math.round(process.uptime()),
     },
   };
@@ -720,22 +837,22 @@ async function routeRequest(request, response) {
       sendJson(response, 200, { status: 'ok', uptime: Math.round(process.uptime()) });
       return;
     }
-    if (pathname === '/api/public/config' && request.method === 'GET') return handlePublicConfig(response);
-    if (pathname === '/api/chat' && request.method === 'POST') return handleChat(request, response);
-    if (pathname === '/api/admin/login' && request.method === 'POST') return handleAdminLogin(request, response);
-    if (pathname === '/api/admin/logout' && request.method === 'POST') return handleAdminLogout(request, response);
-    if (pathname === '/api/admin/session' && request.method === 'GET') return handleAdminSession(request, response);
-    if (pathname === '/api/admin/overview' && request.method === 'GET') return handleAdminOverview(request, response);
-    if (pathname === '/api/admin/conversations' && ['DELETE', 'GET'].includes(request.method)) return handleAdminConversations(request, response, searchParams);
-    if (pathname === '/api/admin/export' && request.method === 'GET') return handleAdminExport(request, response, searchParams);
-    if (pathname === '/api/admin/settings' && request.method === 'PATCH') return handleAdminSettings(request, response);
+    if (pathname === '/api/public/config' && request.method === 'GET') return await handlePublicConfig(response);
+    if (pathname === '/api/chat' && request.method === 'POST') return await handleChat(request, response);
+    if (pathname === '/api/admin/login' && request.method === 'POST') return await handleAdminLogin(request, response);
+    if (pathname === '/api/admin/logout' && request.method === 'POST') return await handleAdminLogout(request, response);
+    if (pathname === '/api/admin/session' && request.method === 'GET') return await handleAdminSession(request, response);
+    if (pathname === '/api/admin/overview' && request.method === 'GET') return await handleAdminOverview(request, response);
+    if (pathname === '/api/admin/conversations' && ['DELETE', 'GET'].includes(request.method)) return await handleAdminConversations(request, response, searchParams);
+    if (pathname === '/api/admin/export' && request.method === 'GET') return await handleAdminExport(request, response, searchParams);
+    if (pathname === '/api/admin/settings' && request.method === 'PATCH') return await handleAdminSettings(request, response);
 
     const conversationMatch = pathname.match(/^\/api\/admin\/conversations\/([A-Za-z0-9_-]+)$/);
     if (conversationMatch && ['DELETE', 'GET'].includes(request.method)) {
-      return handleAdminConversation(request, response, conversationMatch[1]);
+      return await handleAdminConversation(request, response, conversationMatch[1]);
     }
 
-    return serveStatic(request, response, pathname);
+    return await serveStatic(request, response, pathname);
   } catch (error) {
     console.error(error);
     if (!response.headersSent) {

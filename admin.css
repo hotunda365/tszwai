@@ -524,6 +524,10 @@ textarea:focus-visible {
   font-weight: 600;
 }
 
+.system-list dd.system-warning {
+  color: var(--admin-terracotta);
+}
+
 .admin-section {
   margin-top: 48px;
   padding-top: 28px;

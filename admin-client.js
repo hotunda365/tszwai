@@ -189,6 +189,13 @@ function renderSystem(system, stats) {
   const enabled = Boolean(system.serviceEnabled);
   const serviceText = enabled ? '服務正常開放' : '服務已暫停';
   const stateClass = enabled ? 'online' : 'paused';
+  const storageLabels = {
+    'local-file': '容器本機檔案',
+    'local-file-fallback': '本機備份（Supabase 異常）',
+    'persistent-volume': '持久化 Volume',
+    'persistent-volume-fallback': 'Volume 備份（Supabase 異常）',
+    supabase: 'Supabase 已同步',
+  };
 
   serviceBadge.textContent = serviceText;
   serviceBadge.classList.remove('online', 'paused');
@@ -197,10 +204,11 @@ function renderSystem(system, stats) {
   sidebarStatusDot.classList.add(stateClass);
   sidebarServiceLabel.textContent = enabled ? 'ONLINE' : 'PAUSED';
   systemService.textContent = enabled ? '正常開放' : '已暫停';
-  systemStorage.textContent = system.storage === 'persistent-volume' ? '持久化 Volume' : '容器本機檔案';
-  systemStorage.title = system.storage === 'persistent-volume'
-    ? '部署後資料會保留。'
-    : '重新部署可能會清除資料，建議掛載 Zeabur Volume。';
+  systemStorage.textContent = storageLabels[system.storage] || system.storage;
+  systemStorage.title = system.storageError || (system.storage === 'supabase'
+    ? `最後同步：${formatTime(system.storageLastSyncAt)}`
+    : '重新部署可能會清除本機資料，建議使用 Supabase 或掛載 Zeabur Volume。');
+  systemStorage.classList.toggle('system-warning', !system.storageHealthy);
   systemUptime.textContent = formatUptime(system.uptimeSeconds);
   systemLastActivity.textContent = formatTime(stats.lastActivityAt);
 }
