@@ -1,5 +1,0 @@
-{
-  "buildType": "docker",
-  "dockerfilePath": "./Dockerfile",
-  "buildContext": "."
-}
