@@ -180,6 +180,17 @@ function sendError(response, status, message) {
   sendJson(response, status, { error: message });
 }
 
+function sendDownload(response, filename, contentType, body) {
+  const content = Buffer.from(body, 'utf8');
+  response.writeHead(200, {
+    'Cache-Control': 'no-store',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Content-Length': content.length,
+    'Content-Type': contentType,
+  });
+  response.end(content);
+}
+
 function readCookies(request) {
   return Object.fromEntries(
     (request.headers.cookie || '')
@@ -303,25 +314,109 @@ function summariseConversation(conversation, includeMessages = false) {
     id: conversation.id,
     messageCount: messages.length,
     preview: latestUserMessage?.text.slice(0, 100) || '尚未有訊息',
+    questionCount: messages.filter((message) => message.role === 'user').length,
     updatedAt: conversation.updatedAt,
     visitorLabel: `匿名訪客 ${conversation.visitorId.slice(-6)}`,
     ...(includeMessages ? { messages } : {}),
   };
 }
 
+function hongKongDateKey(value) {
+  const parts = new Intl.DateTimeFormat('en', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'Asia/Hong_Kong',
+    year: 'numeric',
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getActivitySeries(conversations, days = 7) {
+  const values = new Map();
+
+  for (let offset = days - 1; offset >= 0; offset--) {
+    const date = new Date(Date.now() - offset * 24 * 60 * 60 * 1000);
+    const key = hongKongDateKey(date);
+    values.set(key, { conversations: 0, date: key, questions: 0 });
+  }
+
+  for (const conversation of conversations) {
+    const conversationKey = hongKongDateKey(conversation.createdAt);
+    if (values.has(conversationKey)) values.get(conversationKey).conversations++;
+
+    for (const message of conversation.messages || []) {
+      if (message.role !== 'user') continue;
+      const messageKey = hongKongDateKey(message.createdAt);
+      if (values.has(messageKey)) values.get(messageKey).questions++;
+    }
+  }
+
+  return [...values.values()];
+}
+
+function parsePositiveInteger(value, fallback, maximum) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, maximum);
+}
+
+function queryConversations(searchParams) {
+  const query = String(searchParams.get('q') || '').trim().toLocaleLowerCase('zh-HK').slice(0, 100);
+  const period = ['today', '7d', '30d', 'all'].includes(searchParams.get('period'))
+    ? searchParams.get('period')
+    : 'all';
+  const sort = searchParams.get('sort') === 'oldest' ? 'oldest' : 'newest';
+  const now = Date.now();
+  const currentDay = hongKongDateKey(now);
+  const periodDays = period === '7d' ? 7 : period === '30d' ? 30 : null;
+
+  const conversations = store.conversations
+    .filter((conversation) => {
+      if (period === 'today' && hongKongDateKey(conversation.updatedAt) !== currentDay) return false;
+      if (periodDays && new Date(conversation.updatedAt).valueOf() < now - periodDays * 24 * 60 * 60 * 1000) return false;
+      if (!query) return true;
+
+      const searchableText = [
+        conversation.visitorId,
+        `匿名訪客 ${conversation.visitorId.slice(-6)}`,
+        ...(conversation.messages || []).map((message) => message.text),
+      ].join('\n').toLocaleLowerCase('zh-HK');
+      return searchableText.includes(query);
+    })
+    .sort((left, right) => sort === 'oldest'
+      ? left.updatedAt.localeCompare(right.updatedAt)
+      : right.updatedAt.localeCompare(left.updatedAt));
+
+  return { conversations, period, query, sort };
+}
+
+function escapeCsv(value) {
+  const text = String(value ?? '');
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
 function getOverview() {
   const conversations = [...store.conversations].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   const allMessages = conversations.flatMap((conversation) => conversation.messages || []);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = hongKongDateKey(Date.now());
 
   return {
-    recentConversations: conversations.slice(0, 8).map((conversation) => summariseConversation(conversation)),
+    activity: getActivitySeries(conversations),
     settings: store.settings,
     stats: {
       activeVisitors: new Set(conversations.map((conversation) => conversation.visitorId)).size,
+      averageMessages: conversations.length ? Math.round((allMessages.length / conversations.length) * 10) / 10 : 0,
       conversations: conversations.length,
+      lastActivityAt: conversations[0]?.updatedAt || null,
       messages: allMessages.length,
-      questionsToday: allMessages.filter((message) => message.role === 'user' && message.createdAt.startsWith(today)).length,
+      questionsToday: allMessages.filter((message) => message.role === 'user' && hongKongDateKey(message.createdAt) === today).length,
+    },
+    system: {
+      adminConfigured: Boolean(adminPasswordHash),
+      serviceEnabled: store.settings.serviceEnabled,
+      storage: process.env.DATA_DIR ? 'persistent-volume' : 'local-file',
+      uptimeSeconds: Math.round(process.uptime()),
     },
   };
 }
@@ -472,7 +567,7 @@ async function handleAdminOverview(request, response) {
   sendJson(response, 200, getOverview());
 }
 
-async function handleAdminConversations(request, response) {
+async function handleAdminConversations(request, response, searchParams) {
   if (!requireAdmin(request, response)) return;
 
   if (request.method === 'DELETE') {
@@ -482,12 +577,90 @@ async function handleAdminConversations(request, response) {
     return;
   }
 
+  const requestedPage = parsePositiveInteger(searchParams.get('page'), 1, 10000);
+  const limit = parsePositiveInteger(searchParams.get('limit'), 12, 50);
+  const result = queryConversations(searchParams);
+  const pages = Math.max(1, Math.ceil(result.conversations.length / limit));
+  const page = Math.min(requestedPage, pages);
+  const offset = (page - 1) * limit;
+
   sendJson(response, 200, {
-    conversations: [...store.conversations]
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .slice(0, 50)
-      .map((conversation) => summariseConversation(conversation, true)),
+    conversations: result.conversations
+      .slice(offset, offset + limit)
+      .map((conversation) => summariseConversation(conversation)),
+    pagination: {
+      limit,
+      page,
+      pages,
+      total: result.conversations.length,
+    },
   });
+}
+
+async function handleAdminConversation(request, response, conversationId) {
+  if (!requireAdmin(request, response)) return;
+
+  const index = store.conversations.findIndex((conversation) => conversation.id === conversationId);
+  if (index === -1) {
+    sendError(response, 404, '找不到這段對話。');
+    return;
+  }
+
+  if (request.method === 'DELETE') {
+    store.conversations.splice(index, 1);
+    await persistStore();
+    sendJson(response, 200, { deleted: true });
+    return;
+  }
+
+  sendJson(response, 200, {
+    conversation: summariseConversation(store.conversations[index], true),
+  });
+}
+
+async function handleAdminExport(request, response, searchParams) {
+  if (!requireAdmin(request, response)) return;
+
+  const format = searchParams.get('format') === 'csv' ? 'csv' : 'json';
+  const result = queryConversations(searchParams);
+  const date = hongKongDateKey(Date.now());
+
+  if (format === 'json') {
+    const body = JSON.stringify({
+      conversations: result.conversations.map((conversation) => summariseConversation(conversation, true)),
+      exportedAt: new Date().toISOString(),
+      filters: { period: result.period, query: result.query, sort: result.sort },
+    }, null, 2);
+    sendDownload(response, `tszwai-conversations-${date}.json`, 'application/json; charset=utf-8', body);
+    return;
+  }
+
+  const rows = [[
+    'conversation_id',
+    'visitor',
+    'conversation_created_at',
+    'conversation_updated_at',
+    'role',
+    'message_created_at',
+    'message',
+  ]];
+
+  for (const conversation of result.conversations) {
+    for (const message of conversation.messages || []) {
+      rows.push([
+        conversation.id,
+        `匿名訪客 ${conversation.visitorId.slice(-6)}`,
+        conversation.createdAt,
+        conversation.updatedAt,
+        message.role,
+        message.createdAt,
+        message.text,
+      ]);
+    }
+  }
+
+  const body = `\uFEFF${rows.map((row) => row.map(escapeCsv).join(',')).join('\r\n')}`;
+  sendDownload(response, `tszwai-conversations-${date}.csv`, 'text/csv; charset=utf-8', body);
 }
 
 async function handleAdminSettings(request, response) {
@@ -539,7 +712,8 @@ async function serveStatic(request, response, pathname) {
 
 async function routeRequest(request, response) {
   setSecurityHeaders(response);
-  const { pathname } = new URL(request.url || '/', 'http://localhost');
+  const requestUrl = new URL(request.url || '/', 'http://localhost');
+  const { pathname, searchParams } = requestUrl;
 
   try {
     if (pathname === '/health' && request.method === 'GET') {
@@ -552,8 +726,14 @@ async function routeRequest(request, response) {
     if (pathname === '/api/admin/logout' && request.method === 'POST') return handleAdminLogout(request, response);
     if (pathname === '/api/admin/session' && request.method === 'GET') return handleAdminSession(request, response);
     if (pathname === '/api/admin/overview' && request.method === 'GET') return handleAdminOverview(request, response);
-    if (pathname === '/api/admin/conversations' && ['DELETE', 'GET'].includes(request.method)) return handleAdminConversations(request, response);
+    if (pathname === '/api/admin/conversations' && ['DELETE', 'GET'].includes(request.method)) return handleAdminConversations(request, response, searchParams);
+    if (pathname === '/api/admin/export' && request.method === 'GET') return handleAdminExport(request, response, searchParams);
     if (pathname === '/api/admin/settings' && request.method === 'PATCH') return handleAdminSettings(request, response);
+
+    const conversationMatch = pathname.match(/^\/api\/admin\/conversations\/([A-Za-z0-9_-]+)$/);
+    if (conversationMatch && ['DELETE', 'GET'].includes(request.method)) {
+      return handleAdminConversation(request, response, conversationMatch[1]);
+    }
 
     return serveStatic(request, response, pathname);
   } catch (error) {

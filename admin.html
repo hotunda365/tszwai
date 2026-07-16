@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="admin.css?v=1" />
+  <link rel="stylesheet" href="admin.css?v=2" />
 </head>
 <body class="admin-body">
   <div class="admin-shell">
@@ -22,10 +22,18 @@
 
       <nav class="admin-nav">
         <a class="admin-nav-link" href="#overview">營運總覽</a>
+        <a class="admin-nav-link" href="#activity">活動趨勢</a>
         <a class="admin-nav-link" href="#conversations">匿名對話</a>
         <a class="admin-nav-link" href="#settings">導師設定</a>
       </nav>
 
+      <div class="sidebar-health">
+        <span class="status-dot" id="sidebar-status-dot"></span>
+        <span>
+          <small>PUBLIC SERVICE</small>
+          <strong id="sidebar-service-label">正在檢查</strong>
+        </span>
+      </div>
       <a class="front-link" href="/">開啟前台</a>
     </aside>
 
@@ -56,6 +64,7 @@
             <p class="status-copy" id="dashboard-status">正在讀取資料</p>
           </div>
           <div class="header-actions">
+            <span class="service-badge" id="service-badge">正在檢查服務</span>
             <button class="button button-secondary" id="refresh-button" type="button">重新整理</button>
             <button class="button button-secondary" id="logout-button" type="button">登出</button>
           </div>
@@ -65,18 +74,65 @@
           <article class="metric-card">
             <span>匿名訪客</span>
             <strong id="metric-visitors">0</strong>
+            <small>累計識別訪客</small>
           </article>
           <article class="metric-card">
             <span>對話數量</span>
             <strong id="metric-conversations">0</strong>
+            <small>所有匿名對話</small>
           </article>
           <article class="metric-card">
             <span>訊息總數</span>
             <strong id="metric-messages">0</strong>
+            <small id="metric-average">平均 0 則 / 對話</small>
           </article>
           <article class="metric-card metric-accent">
             <span>今日提問</span>
             <strong id="metric-today">0</strong>
+            <small>香港時間今日</small>
+          </article>
+        </section>
+
+        <section class="insight-grid" id="activity" aria-label="活動與系統狀態">
+          <article class="insight-panel activity-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">LAST 7 DAYS</p>
+                <h2>提問活動</h2>
+              </div>
+              <div class="chart-legend">
+                <span><i class="legend-question"></i>提問</span>
+                <span><i class="legend-conversation"></i>新對話</span>
+              </div>
+            </div>
+            <div class="activity-chart" id="activity-chart" aria-label="最近七日提問活動圖"></div>
+          </article>
+
+          <article class="insight-panel system-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">SYSTEM HEALTH</p>
+                <h2>服務狀態</h2>
+              </div>
+            </div>
+            <dl class="system-list">
+              <div>
+                <dt>前台服務</dt>
+                <dd id="system-service">檢查中</dd>
+              </div>
+              <div>
+                <dt>資料儲存</dt>
+                <dd id="system-storage">檢查中</dd>
+              </div>
+              <div>
+                <dt>程序運行</dt>
+                <dd id="system-uptime">檢查中</dd>
+              </div>
+              <div>
+                <dt>最後活動</dt>
+                <dd id="system-last-activity">尚未有活動</dd>
+              </div>
+            </dl>
           </article>
         </section>
 
@@ -84,11 +140,48 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow">ANONYMOUS RECORDS</p>
-              <h2 id="conversations-heading">最近對話</h2>
+              <h2 id="conversations-heading">對話工作台</h2>
             </div>
-            <button class="button button-danger" id="clear-conversations-button" type="button">清除所有紀錄</button>
+            <div class="section-actions">
+              <button class="button button-secondary" id="export-json-button" type="button">匯出 JSON</button>
+              <button class="button button-secondary" id="export-csv-button" type="button">匯出 CSV</button>
+              <button class="button button-danger" id="clear-conversations-button" type="button">清除全部</button>
+            </div>
+          </div>
+
+          <div class="conversation-toolbar">
+            <label class="search-control" for="conversation-search">
+              <span>搜尋</span>
+              <input id="conversation-search" type="search" placeholder="搜尋訪客代號或訊息內容" autocomplete="off" />
+            </label>
+            <label class="compact-control" for="conversation-period">
+              <span>日期</span>
+              <select id="conversation-period">
+                <option value="all">所有日期</option>
+                <option value="today">今天</option>
+                <option value="7d">最近 7 日</option>
+                <option value="30d">最近 30 日</option>
+              </select>
+            </label>
+            <label class="compact-control" for="conversation-sort">
+              <span>排序</span>
+              <select id="conversation-sort">
+                <option value="newest">最新活動</option>
+                <option value="oldest">最早活動</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="list-status">
+            <span id="conversation-result-count">正在讀取對話</span>
+            <button class="text-button" id="reset-filters-button" type="button" hidden>清除篩選</button>
           </div>
           <div class="conversation-list" id="conversation-list" aria-live="polite"></div>
+          <nav class="pagination" id="conversation-pagination" aria-label="對話分頁" hidden>
+            <button class="button button-secondary" id="previous-page-button" type="button">上一頁</button>
+            <span id="pagination-label">第 1 / 1 頁</span>
+            <button class="button button-secondary" id="next-page-button" type="button">下一頁</button>
+          </nav>
         </section>
 
         <section class="admin-section settings-section" id="settings" aria-labelledby="settings-heading">
@@ -97,6 +190,7 @@
               <p class="eyebrow">ASSISTANT CONTROL</p>
               <h2 id="settings-heading">導師設定</h2>
             </div>
+            <span class="save-state" id="settings-save-state">所有變更已儲存</span>
           </div>
 
           <form class="settings-form" id="settings-form">
@@ -134,6 +228,7 @@
             </label>
 
             <div class="form-actions">
+              <button class="button button-secondary" id="reset-settings-button" type="button">還原變更</button>
               <button class="button button-primary" id="save-settings-button" type="submit">儲存設定</button>
             </div>
           </form>
@@ -143,6 +238,25 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-  <script src="admin-client.js?v=1"></script>
+
+  <dialog class="conversation-dialog" id="conversation-dialog" aria-labelledby="conversation-dialog-title">
+    <div class="dialog-shell">
+      <header class="dialog-header">
+        <div>
+          <p class="eyebrow">CONVERSATION DETAIL</p>
+          <h2 id="conversation-dialog-title">對話詳情</h2>
+          <p id="conversation-dialog-meta"></p>
+        </div>
+        <button class="icon-button" id="close-conversation-dialog" type="button" title="關閉" aria-label="關閉對話詳情">×</button>
+      </header>
+      <div class="dialog-content" id="conversation-dialog-content"></div>
+      <footer class="dialog-footer">
+        <button class="button button-danger" id="delete-conversation-button" type="button">刪除這段對話</button>
+        <button class="button button-secondary" id="close-conversation-button" type="button">關閉</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <script src="admin-client.js?v=2"></script>
 </body>
 </html>
