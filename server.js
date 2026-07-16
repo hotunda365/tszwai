@@ -11,6 +11,10 @@ const supabaseUrl = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_S
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseStateKey = process.env.SUPABASE_STATE_KEY || 'mindful_session_state_v1';
 const supabaseConfigured = Boolean(supabaseUrl && supabaseServiceRoleKey);
+const deepseekApiKey = process.env.DEEPSEEK_API_KEY || '';
+const deepseekBaseUrl = String(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
+const deepseekModel = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+const deepseekConfigured = Boolean(deepseekApiKey);
 const adminPassword = process.env.ADMIN_PASSWORD || process.env.PASSWORD || '';
 const adminPasswordHash = adminPassword
   ? createHash('sha256').update(adminPassword, 'utf8').digest()
@@ -67,6 +71,12 @@ let storageStatus = {
   healthy: true,
   lastSyncAt: null,
   provider: supabaseConfigured ? 'supabase' : process.env.DATA_DIR ? 'persistent-volume' : 'local-file',
+};
+let llmStatus = {
+  error: null,
+  healthy: deepseekConfigured,
+  lastRequestAt: null,
+  provider: deepseekConfigured ? 'deepseek' : 'templates',
 };
 const sessions = new Map();
 const loginAttempts = new Map();
@@ -538,9 +548,82 @@ function getOverview() {
   };
 }
 
-function createAssistantReply(style) {
+function createTemplateReply(style) {
   const templates = replyTemplates[style] || replyTemplates.supportive;
   return templates[Math.floor(Math.random() * templates.length)];
+}
+
+function createSystemPrompt(style) {
+  const styleInstructions = {
+    grounding: '以穩定情緒和回到當下為主，提供簡短、容易跟隨的呼吸或感官練習。',
+    reflective: '以反映和整理感受為主，溫和指出情緒與需要之間可能的關係。',
+    supportive: '以同理、支持和不批判的語氣回應，幫助對方感到被理解。',
+  };
+
+  return [
+    `你是「${store.settings.assistantName}」，一位使用繁體中文（香港用語）的靜心對話助手。`,
+    styleInstructions[style] || styleInstructions.supportive,
+    '每次回覆保持精簡自然，通常不超過 180 個中文字，並在合適時提出一個溫和的開放式問題。',
+    '不要聲稱自己是醫生、心理學家或真人，也不要作出診斷、保證療效或提供藥物建議。',
+    '若對方表示可能即時傷害自己或他人，請鼓勵立即聯絡當地緊急服務、危機支援或身邊可信任的人。',
+  ].join('\n');
+}
+
+async function createAssistantReply(conversation, message, style) {
+  if (!deepseekConfigured) return createTemplateReply(style);
+
+  const history = conversation.messages
+    .slice(-20)
+    .filter((item) => ['assistant', 'user'].includes(item.role) && typeof item.text === 'string')
+    .map((item) => ({ content: item.text, role: item.role }));
+
+  try {
+    const apiResponse = await fetch(`${deepseekBaseUrl}/chat/completions`, {
+      body: JSON.stringify({
+        max_tokens: 700,
+        messages: [
+          { content: createSystemPrompt(style), role: 'system' },
+          ...history,
+          { content: message, role: 'user' },
+        ],
+        model: deepseekModel,
+        stream: false,
+        temperature: 0.7,
+      }),
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${deepseekApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      method: 'POST',
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!apiResponse.ok) {
+      throw new Error(`DeepSeek request failed with status ${apiResponse.status}.`);
+    }
+
+    const result = await apiResponse.json();
+    const reply = result?.choices?.[0]?.message?.content?.trim();
+    if (!reply) throw new Error('DeepSeek returned an empty response.');
+
+    llmStatus = {
+      error: null,
+      healthy: true,
+      lastRequestAt: new Date().toISOString(),
+      provider: 'deepseek',
+    };
+    return reply.slice(0, 4000);
+  } catch (error) {
+    console.error('DeepSeek reply failed; using a template fallback.', error.message);
+    llmStatus = {
+      error: error.message,
+      healthy: false,
+      lastRequestAt: new Date().toISOString(),
+      provider: 'deepseek-fallback',
+    };
+    return createTemplateReply(style);
+  }
 }
 
 function validateSettings(payload) {
@@ -622,7 +705,7 @@ async function handleChat(request, response) {
     return;
   }
 
-  const reply = createAssistantReply(store.settings.replyStyle);
+  const reply = await createAssistantReply(conversation, message, store.settings.replyStyle);
   conversation.messages.push(
     { createdAt: now, id: randomId(), role: 'user', text: message },
     { createdAt: now, id: randomId(), role: 'assistant', text: reply },
@@ -835,7 +918,13 @@ async function routeRequest(request, response) {
   try {
     if (pathname === '/health' && request.method === 'GET') {
       sendJson(response, 200, {
-        status: storageStatus.healthy ? 'ok' : 'degraded',
+        status: storageStatus.healthy && (!deepseekConfigured || llmStatus.healthy) ? 'ok' : 'degraded',
+        llm: {
+          configured: deepseekConfigured,
+          healthy: llmStatus.healthy,
+          model: deepseekConfigured ? deepseekModel : null,
+          provider: llmStatus.provider,
+        },
         storage: {
           healthy: storageStatus.healthy,
           provider: storageStatus.provider,
