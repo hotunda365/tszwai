@@ -1,4 +1,5 @@
 {
-  "build_type": "static",
-  "output_dir": "."
+  "build": {
+    "builder": "html"
+  }
 }
