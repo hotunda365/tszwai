@@ -1,12 +1,9 @@
-FROM node:22-alpine
+FROM nginx:alpine
 
-WORKDIR /app
+COPY . /usr/share/nginx/html/
 
-COPY . .
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# Install a simple static server
-RUN npm install --global http-server
+EXPOSE 80
 
-EXPOSE 3000
-
-CMD ["http-server", "-p", "3000", "-g"]
+CMD ["nginx", "-g", "daemon off;"]
